@@ -105,8 +105,8 @@ CCommandHandler CmdHandler;
 
 std::thread messageThread;
 
-bool inCrashRecoveryLoop;
-bool isForceCreateSessionEnabled;
+bool inCrashRecoveryLoop; // stage 1: for 2 seconds collect incoming packets to decide who is trying to connect
+bool isForceCreateSessionEnabled; // stage 2: for 2 seconds after, create a session based on this vector
 std::vector<pruned_session> prunedSessionsList;
 
 /************************************************************************
@@ -318,7 +318,7 @@ int32 do_init(int32 argc, char** argv)
     // suspending this operation until more work can be done on this
     // definitely need to get more info on the storage of P and S on client blowkey
     // may need to add these into accounts_sessions in order for this recovery system to work
-    prunedSessionsList.clear();
+    // prunedSessionsList.clear();
 
     ShowMessage("\t\t - " CL_GREEN"[OK]" CL_RESET"\n");
     ShowStatus("do_init: zlib is reading");
@@ -383,7 +383,7 @@ int32 do_init(int32 argc, char** argv)
     CTaskMgr::getInstance()->AddTask("crash_recovery_end", server_clock::now() + 2s, nullptr, CTaskMgr::TASK_ONCE, crash_recovery_end);
     CTaskMgr::getInstance()->AddTask("disableForceCreateSession", server_clock::now() + 4s, nullptr, CTaskMgr::TASK_ONCE, disableForceCreateSession);
 
-    //ShowDebug("prunedSessionsList size is %u\n", (uint32)prunedSessionsList.size());
+    ShowDebug("prunedSessionsList size is %u\n", (uint32)prunedSessionsList.size());
     if (prunedSessionsList.size() >= map_config.zone_crash_recovery_min_players)
         inCrashRecoveryLoop = true;
 
@@ -394,7 +394,7 @@ int32 do_init(int32 argc, char** argv)
 
     ShowStatus("The map-server is " CL_GREEN"ready" CL_RESET" to work...\n");
     ShowMessage("=======================================================================\n");
-    //ShowInfo("Crash recovery running, checking for pruned connections...\n");
+    ShowInfo("Crash recovery running, checking for pruned connections...\n");
     return 0;
 }
 
@@ -619,11 +619,12 @@ int32 map_decipher_packet(int8* buff, size_t size, sockaddr_in* from, map_sessio
 
     if (isForceCreateSessionEnabled)
     {
-        std::for_each(std::begin(prunedSessionsList), std::end(prunedSessionsList), [&ip, &it, &at](pruned_session const session)
+        std::for_each(std::begin(prunedSessionsList), std::end(prunedSessionsList), [&ip, &it, &at](pruned_session session)
             {
-                if (ip == session.m_5_client_addr)
+                if (ip == session.m_5_client_addr && !session.m_hasInitializedBlowfish)
                 {
                     at = it;
+                    session.m_hasInitializedBlowfish = true; // we are assuming the next codeblock fires, initializing blowfish
                 }
                 it++;
             });
@@ -631,18 +632,23 @@ int32 map_decipher_packet(int8* buff, size_t size, sockaddr_in* from, map_sessio
 
     if (at != -1)
     {
-        //ShowDebug("map_encipher_packet: attempting pruned key %u\n", prunedSessionsList.at(at).m_2_session_key[4]);
+        ShowDebug("map_decipher_packet: attempting pruned key %u\n", prunedSessionsList.at(at).m_2_session_key[4]);
 
         memcpy(map_session_data->blowfish.key, &(prunedSessionsList.at(at).m_2_session_key[0]), 20);
-        blowfish_init((int8*)&(map_session_data->blowfish.key), 20, (uint32*)&(map_session_data->blowfish.P), (uint32*)&(map_session_data->blowfish.S));
+
+        md5((uint8*)(map_session_data->blowfish.key), map_session_data->blowfish.hash, 20);
+
+        for (uint32 i = 0; i < 16; ++i)
+        {
+            if (map_session_data->blowfish.hash[i] == 0)
+            {
+                memset(map_session_data->blowfish.hash + i, 0, 16 - i);
+                break;
+            }
+        }
+        blowfish_init((int8*)map_session_data->blowfish.hash, 16, map_session_data->blowfish.P, map_session_data->blowfish.S[0]);
 
         pbfkey = &map_session_data->blowfish;
-
-        // todo: drop the above stuff, it's not working
-        // instead, reinterpret packet as a login packet (0x0a)
-        // and use a different return code in this if statement (return code 1) that skips decipher and checksum
-        // that return code will tell the calling function to skip zlib compression and immediately interpret the packet
-        // the argument "size" for this function must be changed to a pointer so that it is a modifiable value for the reinterpretation
     }
 
     for (i = 0; i < tmp; i += 2)
@@ -784,6 +790,20 @@ int32 parse(int8* buff, size_t* buffsize, sockaddr_in* from, map_session_data_t*
     int8* PacketData_Begin = &buff[FFXI_HEADER_SIZE];
     int8* PacketData_End = &buff[*buffsize];
 
+    if (!map_session_data->PChar)
+    {
+        // we got character packets for a session that doesn't have a character
+        // crash recovery: make a new character, ignore these packets, and force a rezone to rebuild the character
+        map_session_data->PChar = new CCharEntity();
+        map_session_data->PChar->id = 1;
+        map_session_data->PChar->loc.zone = zoneutils::GetZone(61);
+        map_session_data->server_packet_id = 0xFFFD; // indicate to client this is the last packet
+        map_session_data->PChar->loc.destination = 61;
+        map_session_data->PChar->loc.prevzone = 61;
+        charutils::SendToZone(map_session_data->PChar, 2, zoneutils::GetZoneIPP(61));
+        return 0;
+    }
+
     CCharEntity* PChar = map_session_data->PChar;
 
     TracyZoneIString(PChar->GetName());
@@ -807,9 +827,8 @@ int32 parse(int8* buff, size_t* buffsize, sockaddr_in* from, map_session_data_t*
 
         if (PacketSize[SmallPD_Type] == SmallPD_Size || PacketSize[SmallPD_Type] == 0) // Tests incoming packets for the correct size prior to processing
         {
-            // Google Translate:
-            // if the code of the current package is less than or equal to the last received
-            // or more global then ignore the package
+            // if the id of the current packet is less than or equal to the last received packet
+            // or more global then ignore the packet
 
             if ((ref<uint16>(SmallPD_ptr, 2) <= map_session_data->client_packet_id) ||
                 (ref<uint16>(SmallPD_ptr, 2) > SmallPD_Code))
@@ -1871,7 +1890,7 @@ int32 map_garbage_collect(time_point tick, CTaskMgr::CTask* PTask)
 
 int32 crash_recovery_end(time_point tick, CTaskMgr::CTask* PTask)
 {
-    //ShowDebug("ENDING CRASH RECOVERY LOOP NOW\n");
+    ShowDebug("ENDING CRASH RECOVERY LOOP NOW\n");
     if (!inCrashRecoveryLoop)
     {
         return 0;

@@ -1,4 +1,4 @@
-/*
+﻿/*
 ===========================================================================
 
 this document is 100% original code written for the Wings FFXI server project
@@ -32,6 +32,7 @@ public:
     char   m_7_client_version[CLIENT_VERSION_SIZE] = { 0 };
 
     bool   m_recoveryQueued         = false;
+    bool   m_hasInitializedBlowfish = false;
 };
 
 #endif

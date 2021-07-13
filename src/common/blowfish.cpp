@@ -394,8 +394,7 @@ cycle:
 
 void blowfish_decipher(uint32* xl, uint32* xr, uint32* P, uint32* S)
 {
-
-#if defined (WIN32) && defined (_M_X86)
+#if defined(WIN32) && defined(_M_X86)
 
    uint32  Xr;
    uint32   i;
