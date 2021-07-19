@@ -47,31 +47,6 @@ local items = {
         id = 14396, -- Tanner's Apron
         rank = 7,
         cost = 100000
-    },
-    [3] = {
-        id = 202, -- Golden Fleece
-        rank = 9,
-        cost = 150000
-    },
-    [4] = {
-        id = 339, -- Tanner's Signboard
-        rank = 9,
-        cost = 200000
-    },
-    [5] = {
-        id = 15823, -- Tanner's Ring
-        rank = 6,
-        cost = 80000
-    },
-    [6] = {
-        id = 3668, -- Hide Stretcher
-        rank = 7,
-        cost = 50000
-    },
-    [7] = {
-        id = 3329, -- Tanners' Emblem
-        rank = 9,
-        cost = 15000
     }
 }
 

@@ -61,31 +61,6 @@ local items = {
         id = 14398, -- Alchemist's Apron
         rank = 7,
         cost = 100000
-    },
-    [3] = {
-        id = 134, -- copy of Emeralda
-        rank = 9,
-        cost = 150000
-    },
-    [4] = {
-        id = 342, -- Alchemist's Signboard
-        rank = 9,
-        cost = 200000
-    },
-    [5] = {
-        id = 15825, -- Alchemist's Ring
-        rank = 6,
-        cost = 80000
-    },
-    [6] = {
-        id = 3674, -- Alembic
-        rank = 7,
-        cost = 50000
-    },
-    [7] = {
-        id = 3332, -- Alchemist's Emblem
-        rank = 9,
-        cost = 15000
     }
 }
 
