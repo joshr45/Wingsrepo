@@ -33,6 +33,7 @@ function onMobDeath(mob, player, isKiller)
 end
 
 function onMobDespawn(mob)
+    UpdateNMSpawnPoint(mob:getID())
 	local respawn = math.random(75600, 86400)  -- 21 to 24 hours
     mob:setRespawnTime(respawn)
 	SetServerVariable("BorokaRespawn",(os.time() + respawn))
