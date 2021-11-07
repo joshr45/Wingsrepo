@@ -1979,7 +1979,7 @@ void CCharEntity::OnItemFinish(CItemState& state, action_t& action)
             SqlHandle,
             Query,
             extra,
-            this->id,
+            this->id & 0xFFFF,
             PItem->getLocationID(),
             PItem->getSlotID());
 
@@ -2134,7 +2134,7 @@ int32 CCharEntity::GetTimeCreated()
 {
     const char* fmtQuery = "SELECT UNIX_TIMESTAMP(timecreated) FROM chars WHERE charid = %u;";
 
-    int32 ret = Sql_Query(SqlHandle, fmtQuery, id);
+    int32 ret = Sql_Query(SqlHandle, fmtQuery, id & 0xFFFF);
 
     if (ret != SQL_ERROR &&
         Sql_NumRows(SqlHandle) != 0 &&

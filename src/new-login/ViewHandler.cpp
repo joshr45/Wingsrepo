@@ -389,7 +389,7 @@ void ViewHandler::HandleLoginRequest(const LOGIN_REQUEST_PACKET* pRequestPacket)
     strSqlQueryFmt = "SELECT charid FROM %saccounts_sessions WHERE charid = %u OR content_id = %u;";
     strSqlFinalQuery = FormatString(&strSqlQueryFmt,
         pcszWorldPrefix,
-        pCurrentChar->dwCharacterID,
+        pCurrentChar->dwCharacterID & 0xFFFF,
         pCurrentChar->dwContentID);
     mariadb::result_set_ref pResultSet = WorldDB->GetDatabase()->query(strSqlFinalQuery);
     if (pResultSet->row_count() != 0) {
@@ -429,7 +429,7 @@ void ViewHandler::HandleLoginRequest(const LOGIN_REQUEST_PACKET* pRequestPacket)
     strSqlQueryFmt = "SELECT pos_zone, pos_prevzone FROM %schars WHERE charid = %u AND content_id = %u;";
     strSqlFinalQuery = FormatString(&strSqlQueryFmt,
         pcszWorldPrefix,
-        pCurrentChar->dwCharacterID,
+        pCurrentChar->dwCharacterID & 0xFFFF,
         pCurrentChar->dwContentID);
     pResultSet = WorldDB->GetDatabase()->query(strSqlFinalQuery);
     if (pResultSet->row_count() == 0) {
@@ -478,7 +478,7 @@ void ViewHandler::HandleLoginRequest(const LOGIN_REQUEST_PACKET* pRequestPacket)
         strSqlQueryFmt = "UPDATE %schars SET pos_prevzone = pos_zone WHERE charid = %u AND content_id = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pCurrentChar->dwCharacterID,
+            pCurrentChar->dwCharacterID & 0xFFFF,
             pCurrentChar->dwContentID);
         WorldDB->GetDatabase()->execute(strSqlFinalQuery);
     }
@@ -491,7 +491,7 @@ void ViewHandler::HandleLoginRequest(const LOGIN_REQUEST_PACKET* pRequestPacket)
     strSqlFinalQuery = FormatString(&strSqlQueryFmt,
         pcszWorldPrefix,
         mpSession->GetAccountID(),
-        pCurrentChar->dwCharacterID,
+        pCurrentChar->dwCharacterID & 0xFFFF,
         Database::RealEscapeString(inet_ntoa(ClientIP)).c_str());
     WorldDB->GetDatabase()->insert(strSqlFinalQuery);
     // Create the new session
@@ -505,7 +505,7 @@ void ViewHandler::HandleLoginRequest(const LOGIN_REQUEST_PACKET* pRequestPacket)
         pcszWorldPrefix,
         mpSession->GetAccountID(),
         pCurrentChar->dwContentID,
-        pCurrentChar->dwCharacterID,
+        pCurrentChar->dwCharacterID & 0xFFFF,
         BinaryToHex(bufKey, sizeof(bufKey)).c_str(),
         dwZoneIP,
         wZonePort,
@@ -523,7 +523,7 @@ void ViewHandler::HandleLoginRequest(const LOGIN_REQUEST_PACKET* pRequestPacket)
         strSqlQueryFmt = "SELECT visible FROM %sflist_settings WHERE callingchar = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pCurrentChar->dwCharacterID);
+            pCurrentChar->dwCharacterID & 0xFFFF);
         pResultSet = WorldDB->GetDatabase()->query(strSqlFinalQuery);
         if (pResultSet->row_count() != 0) {
             pResultSet->next();
@@ -532,7 +532,7 @@ void ViewHandler::HandleLoginRequest(const LOGIN_REQUEST_PACKET* pRequestPacket)
                 strSqlQueryFmt = "UPDATE %sflist SET status = 1 WHERE listedchar = %u;";
                 strSqlFinalQuery = FormatString(&strSqlQueryFmt,
                     pcszWorldPrefix,
-                    pCurrentChar->dwCharacterID);
+                    pCurrentChar->dwCharacterID & 0xFFFF);
                 WorldDB->GetDatabase()->execute(strSqlFinalQuery);
             }
         }
@@ -543,7 +543,7 @@ void ViewHandler::HandleLoginRequest(const LOGIN_REQUEST_PACKET* pRequestPacket)
     strSqlQueryFmt = "UPDATE %schar_stats SET zoning = 2 WHERE charid = %u;";
     strSqlFinalQuery = FormatString(&strSqlQueryFmt,
         pcszWorldPrefix,
-        pCurrentChar->dwCharacterID);
+        pCurrentChar->dwCharacterID & 0xFFFF);
     WorldDB->GetDatabase()->execute(strSqlFinalQuery);
     WorldDB->GetDatabase()->execute("COMMIT;");
     LOG_DEBUG0("Sending notification to map server.");
@@ -655,7 +655,7 @@ void ViewHandler::PrepareNewCharacter(const CREATE_REQUEST_PACKET* pRequestPacke
         return;
     }
     LOG_DEBUG0("Generating new character ID.");
-    uint32_t dwNewCharID = mpSession->GenerateNewCharID(dwWorldID);
+    uint32_t dwNewCharID = (mpSession->GenerateNewCharID(dwWorldID) & 0xFFFF) | (dwWorldID << 16);
     LOG_DEBUG1("New character ID: %u.", dwNewCharID);
     // Verify the target server has registrations enabled
     LOG_DEBUG0("Checking whether the target world allows registrations.");
@@ -819,7 +819,7 @@ void ViewHandler::ConfirmNewCharacter(const CONFIRM_CREATE_REQUEST_PACKET* pRequ
             "VALUES (%u, %u, %u, '%s', '%s', %u, %u);";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID,
+            pNewChar->dwCharacterID & 0xFFFF,
             pNewChar->dwContentID,
             mpSession->GetAccountID(),
             Database::RealEscapeString(pNewChar->szGoldWorldPass).c_str(),
@@ -832,7 +832,7 @@ void ViewHandler::ConfirmNewCharacter(const CONFIRM_CREATE_REQUEST_PACKET* pRequ
         strSqlQueryFmt = "INSERT INTO %schar_look (charid, face, race, size) VALUES (%u, %u, %u, %u);";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID,
+            pNewChar->dwCharacterID & 0xFFFF,
             pNewChar->cFace,
             pNewChar->cRace,
             pNewChar->cSize);
@@ -841,20 +841,20 @@ void ViewHandler::ConfirmNewCharacter(const CONFIRM_CREATE_REQUEST_PACKET* pRequ
         strSqlQueryFmt = "INSERT INTO %schar_stats (charid, mjob) VALUES (%u, %u);";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID,
+            pNewChar->dwCharacterID & 0xFFFF,
             pNewChar->cMainJob);
         WorldDBObj->insert(strSqlFinalQuery);
         LOG_DEBUG0("Saving character exp.");
         strSqlQueryFmt = "INSERT INTO %schar_exp (charid) VALUES (%u) ON DUPLICATE KEY UPDATE charid = charid;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID);
+            pNewChar->dwCharacterID & 0xFFFF);
         WorldDBObj->insert(strSqlFinalQuery);
         LOG_DEBUG0("Saving character jobs.");
         strSqlQueryFmt = "INSERT INTO %schar_jobs (charid) VALUES (%u) ON DUPLICATE KEY UPDATE charid = charid;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID);
+            pNewChar->dwCharacterID & 0xFFFF);
         WorldDBObj->insert(strSqlFinalQuery);
         LOG_DEBUG0("Saving character points.");
         strSqlQueryFmt = "INSERT INTO %schar_points (charid) VALUES (%u) ON DUPLICATE KEY UPDATE charid = charid;";
@@ -866,31 +866,31 @@ void ViewHandler::ConfirmNewCharacter(const CONFIRM_CREATE_REQUEST_PACKET* pRequ
         strSqlQueryFmt = "INSERT INTO %schar_unlocks (charid) VALUES (%u) ON DUPLICATE KEY UPDATE charid = charid;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID);
+            pNewChar->dwCharacterID & 0xFFFF);
         WorldDBObj->insert(strSqlFinalQuery);
         LOG_DEBUG0("Saving character profile.");
         strSqlQueryFmt = "INSERT INTO %schar_profile (charid) VALUES (%u) ON DUPLICATE KEY UPDATE charid = charid;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID);
+            pNewChar->dwCharacterID & 0xFFFF);
         WorldDBObj->insert(strSqlFinalQuery);
         LOG_DEBUG0("Saving character storage.");
         strSqlQueryFmt = "INSERT INTO %schar_storage (charid) VALUES (%u) ON DUPLICATE KEY UPDATE charid = charid;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID);
+            pNewChar->dwCharacterID & 0xFFFF);
         WorldDBObj->insert(strSqlFinalQuery);
         LOG_DEBUG0("Removing possible leftover inventory.");
         strSqlQueryFmt = "DELETE FROM %schar_inventory WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID);
+            pNewChar->dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Saving character inventory.");
         strSqlQueryFmt = "INSERT INTO %schar_inventory (charid) VALUES (%u) ON DUPLICATE KEY UPDATE charid = charid;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            pNewChar->dwCharacterID);
+            pNewChar->dwCharacterID & 0xFFFF);
         WorldDBObj->insert(strSqlFinalQuery);
         if (WorldManager::GetInstance()->HasFriendList(pNewChar->cWorldID)) {
             LOG_DEBUG0("Saving character friend list settings.");
@@ -898,7 +898,7 @@ void ViewHandler::ConfirmNewCharacter(const CONFIRM_CREATE_REQUEST_PACKET* pRequ
                 "VALUES (%u, 1, 3, 29, 3, 0, %u);";
             strSqlFinalQuery = FormatString(&strSqlQueryFmt,
                 pcszWorldPrefix,
-                pNewChar->dwCharacterID,
+                pNewChar->dwCharacterID & 0xFFFF,
                 time(NULL));
             WorldDBObj->insert(strSqlFinalQuery);
         }
@@ -909,7 +909,7 @@ void ViewHandler::ConfirmNewCharacter(const CONFIRM_CREATE_REQUEST_PACKET* pRequ
             strSqlFinalQuery = FormatString(&strSqlQueryFmt,
                 pcszWorldPrefix,
                 pRequestPacket->dwContentID,
-                pNewChar->dwCharacterID,
+                pNewChar->dwCharacterID & 0xFFFF,
                 Database::RealEscapeString(pNewChar->szGoldWorldPass).c_str());
             WorldDBObj->execute(strSqlFinalQuery);
         }
@@ -932,7 +932,7 @@ void ViewHandler::ConfirmNewCharacter(const CONFIRM_CREATE_REQUEST_PACKET* pRequ
         "VALUES (%u, %u, '%s', %u, '%s', %u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u);";
     strSqlFinalQuery = FormatString(&strSqlQueryFmt,
         Database::RealEscapeString(Config->GetConfigString("db_prefix")).c_str(),
-        pNewChar->dwCharacterID,
+        pNewChar->dwCharacterID & 0xFFFF,
         pNewChar->dwContentID,
         Database::RealEscapeString(pNewChar->szCharName).c_str(),
         pNewChar->cWorldID,
@@ -1018,7 +1018,7 @@ void ViewHandler::DeleteCharacter(const DELETE_REQUEST_PACKET* pRequestPacket)
         strSqlQueryFmt = "SELECT TIMESTAMPDIFF(MINUTE, timecreated, NOW()) FROM %schars WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         mariadb::result_set_ref pResultSet = WorldDB->GetDatabase()->query(strSqlFinalQuery);
         if (pResultSet->row_count() != 0) {
             pResultSet->next();
@@ -1076,185 +1076,185 @@ void ViewHandler::DeleteCharacter(const DELETE_REQUEST_PACKET* pRequestPacket)
         strSqlQueryFmt = "DELETE FROM %schars WHERE charid = %u AND content_id = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID,
+            dwCharacterID & 0xFFFF,
             pRequestPacket->dwContentID);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character blacklist.");
         strSqlQueryFmt = "DELETE FROM %schar_blacklist WHERE charid_target = %u OR charid_owner = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF,
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character effects.");
         strSqlQueryFmt = "DELETE FROM %schar_effects WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character vars.");
         strSqlQueryFmt = "DELETE FROM %schar_vars WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character unlocks.");
         strSqlQueryFmt = "DELETE FROM %schar_unlocks WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character style.");
         strSqlQueryFmt = "DELETE FROM %schar_style WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character storage.");
         strSqlQueryFmt = "DELETE FROM %schar_storage WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character stats.");
         strSqlQueryFmt = "DELETE FROM %schar_stats WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character spells.");
         strSqlQueryFmt = "DELETE FROM %schar_spells WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character skills.");
         strSqlQueryFmt = "DELETE FROM %schar_skills WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character recast.");
         strSqlQueryFmt = "DELETE FROM %schar_recast WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character profile.");
         strSqlQueryFmt = "DELETE FROM %schar_profile WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character points.");
         strSqlQueryFmt = "DELETE FROM %schar_points WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character pet.");
         strSqlQueryFmt = "DELETE FROM %schar_pet WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character merit.");
         strSqlQueryFmt = "DELETE FROM %schar_merit WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character look.");
         strSqlQueryFmt = "DELETE FROM %schar_look WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character jobs.");
         strSqlQueryFmt = "DELETE FROM %schar_jobs WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character job sets.");
         strSqlQueryFmt = "DELETE FROM %schar_job_sets WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character inventory.");
         strSqlQueryFmt = "DELETE FROM %schar_inventory WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character GM messages.");
         strSqlQueryFmt = "DELETE FROM %schar_gmmessage WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character exp.");
         strSqlQueryFmt = "DELETE FROM %schar_exp WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         strSqlQueryFmt = "DELETE FROM %schar_equip WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character delivery box.");
         strSqlQueryFmt = "DELETE FROM %sdelivery_box WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character cheating incidents.");
         strSqlQueryFmt = "DELETE FROM %scheat_incidents WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character fishing log.");
         strSqlQueryFmt = "DELETE FROM %sfishing_log WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character gold world pass.");
         strSqlQueryFmt = "DELETE FROM %sgoldworldpass WHERE creator_charid = %u OR user_charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF,
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character GM calls.");
         strSqlQueryFmt = "DELETE FROM %sserver_gmcalls WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         LOG_DEBUG0("Deleting character login record.");
         strSqlQueryFmt = "DELETE FROM %saccount_ip_record WHERE charid = %u;";
         strSqlFinalQuery = FormatString(&strSqlQueryFmt,
             pcszWorldPrefix,
-            dwCharacterID);
+            dwCharacterID & 0xFFFF);
         WorldDBObj->execute(strSqlFinalQuery);
         if (WorldManager::GetInstance()->HasFriendList(cWorldID)) {
             LOG_DEBUG0("Deleting character friend list.");
             strSqlQueryFmt = "DELETE FROM %sflist WHERE callingchar = %u OR listedchar = %u;";
             strSqlFinalQuery = FormatString(&strSqlQueryFmt,
                 pcszWorldPrefix,
-                dwCharacterID,
-                dwCharacterID);
+                dwCharacterID & 0xFFFF,
+                dwCharacterID & 0xFFFF);
             WorldDBObj->execute(strSqlFinalQuery);
             LOG_DEBUG0("Deleting character friend list settings.");
             strSqlQueryFmt = "DELETE FROM %sflist_settings WHERE callingchar = %u;";
             strSqlFinalQuery = FormatString(&strSqlQueryFmt,
                 pcszWorldPrefix,
-                dwCharacterID);
+                dwCharacterID & 0xFFFF);
             WorldDBObj->execute(strSqlFinalQuery);
         }
     }

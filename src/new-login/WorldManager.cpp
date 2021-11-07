@@ -392,6 +392,11 @@ uint32_t WorldManager::GetNewCharIDForWorld(uint32_t dwWorldID)
         }
     }
     dwNewCharID = ((dwNewCharIDFromMap > dwNewCharIDFromLogin) ? dwNewCharIDFromMap : dwNewCharIDFromLogin);
+    if (dwNewCharID > 0xFFFF) {
+        LOG_ERROR("Out of valid character IDs.");
+        throw std::runtime_error("Out of character IDs.");
+    }
+    dwNewCharID = (dwNewCharID & 0xFFFF) | (dwWorldID << 16);
     // We now have a candidate ID but we need to make sure it's not reserved in
     // any session.
     std::vector<uint32_t> ReservedCharIDs = SessionTracker::GetInstance()->GetReservedCharIDList(dwWorldID);

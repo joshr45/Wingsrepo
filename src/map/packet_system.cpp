@@ -305,7 +305,7 @@ void SmallPacket0x00A(map_session_data_t* const PSession, CCharEntity* const PCh
         // Current zone could either be current zone or destination
         CZone* currentZone = zoneutils::GetZone(PChar->getZone());
 
-        Sql_Query(SqlHandle, fmtQuery, PChar->targid, session_key, currentZone->GetIP(), PSession->client_port, PChar->id);
+        Sql_Query(SqlHandle, fmtQuery, PChar->targid, session_key, currentZone->GetIP(), PSession->client_port, PChar->id & 0xFFFF);
 
         if (currentZone->m_BattlefieldHandler) {
             // Player logging into a battlefield type zone. Doesn't mean they're
@@ -362,11 +362,11 @@ void SmallPacket0x00A(map_session_data_t* const PSession, CCharEntity* const PCh
         if (FLgetSetting(PChar, 2) == 1)
         {
             Sql_Query(SqlHandle, "UPDATE flist_settings SET lastonline = %u WHERE callingchar = %u;", (uint32)CVanaTime::getInstance()->getVanaTime(),
-                      PChar->id);
+                      PChar->id & 0xFFFF);
         }
 
         fmtQuery  = "SELECT death FROM char_stats WHERE charid = %u;";
-        int32 ret = Sql_Query(SqlHandle, fmtQuery, PChar->id);
+        int32 ret = Sql_Query(SqlHandle, fmtQuery, PChar->id & 0xFFFF);
         if (Sql_NextRow(SqlHandle) == SQL_SUCCESS)
         {
             // Update the character's death timestamp based off of how long they were previously dead
@@ -385,7 +385,7 @@ void SmallPacket0x00A(map_session_data_t* const PSession, CCharEntity* const PCh
         }
 
         fmtQuery = "SELECT pos_prevzone FROM chars WHERE charid = %u";
-        ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id);
+        ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id & 0xFFFF);
         if (ret != SQL_ERROR && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
         {
             if (PChar->getZone() == Sql_GetUIntData(SqlHandle, 0))
@@ -533,12 +533,12 @@ void SmallPacket0x00D(map_session_data_t* const PSession, CCharEntity* const PCh
         }
 
         PSession->shuttingDown = 1;
-        Sql_Query(SqlHandle, "UPDATE char_stats SET zoning = 0 WHERE charid = %u", PChar->id);
+        Sql_Query(SqlHandle, "UPDATE char_stats SET zoning = 0 WHERE charid = %u", PChar->id & 0xFFFF);
     }
     else
     {
         PSession->shuttingDown = 2;
-        Sql_Query(SqlHandle, "UPDATE char_stats SET zoning = 1 WHERE charid = %u", PChar->id);
+        Sql_Query(SqlHandle, "UPDATE char_stats SET zoning = 1 WHERE charid = %u", PChar->id & 0xFFFF);
         charutils::CheckEquipLogic(PChar, SCRIPT_CHANGEZONE, PChar->getZone());
 
     }
@@ -623,7 +623,7 @@ void SmallPacket0x011(map_session_data_t* const PSession, CCharEntity* const PCh
 
     // todo: kill player til theyre dead and bsod
     const char* fmtQuery = "SELECT version_mismatch FROM accounts_sessions WHERE charid = %u";
-    int32       ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id);
+    int32       ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id & 0xFFFF);
     if (ret != SQL_ERROR && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
     {
         // On zone change, only sending a version message if mismatch
@@ -1341,7 +1341,7 @@ void SmallPacket0x029(map_session_data_t* const PSession, CCharEntity* const PCh
         {
             const char* Query = "UPDATE char_inventory SET location = %u, slot = %u WHERE charid = %u AND location = %u AND slot = %u;";
 
-            if (Sql_Query(SqlHandle, Query, ToLocationID, NewSlotID, PChar->id, FromLocationID, FromSlotID) != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0)
+            if (Sql_Query(SqlHandle, Query, ToLocationID, NewSlotID, PChar->id & 0xFFFF, FromLocationID, FromSlotID) != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0)
             {
                 PChar->getStorage(FromLocationID)->InsertItem(nullptr, FromSlotID);
 
@@ -1972,19 +1972,19 @@ void SmallPacket0x04B(map_session_data_t* const PSession, CCharEntity* const PCh
 
     FLinitialize(PChar);
 
-    uint32 ret = Sql_Query(SqlHandle, "SELECT FLsentnotif FROM accounts_sessions WHERE charid = %u LIMIT 1;", PChar->id);
+    uint32 ret = Sql_Query(SqlHandle, "SELECT FLsentnotif FROM accounts_sessions WHERE charid = %u LIMIT 1;", PChar->id & 0xFFFF);
 
     if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) == 1 && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
     {
         if (Sql_GetUIntData(SqlHandle, 0) == 0) // we haven't sent notifs yet, this is the first server message request since their account session started
         {
-            ret = Sql_Query(SqlHandle, "UPDATE accounts_sessions SET FLsentnotif = 1 WHERE charid = %u LIMIT 1", PChar->id);
+            ret = Sql_Query(SqlHandle, "UPDATE accounts_sessions SET FLsentnotif = 1 WHERE charid = %u LIMIT 1", PChar->id & 0xFFFF);
 
             if (ret == SQL_ERROR || Sql_AffectedRows(SqlHandle) == 0)
             {
                 ShowError("SQL error occurred in packet_system.cpp under Server Message Request to UPDATE accounts_sessions SET FLsetnotif = 1 WHERE charid = "
                           "%u. Exiting function to prevent multiple notifications upon each character /servmes\n",
-                          PChar->id);
+                          PChar->id & 0xFFFF);
                 return;
             }
 
@@ -2006,13 +2006,13 @@ void SmallPacket0x04B(map_session_data_t* const PSession, CCharEntity* const PCh
     {
         ShowError("SQL error occurred in packet_system.cpp under Server Message Request to SELECT FLsentnotif FROM accounts_sessions WHERE charid = %u ... did "
                   "you remember to ALTER accounts_sessions to add in this new column?\n",
-                  PChar->id);
+                  PChar->id & 0xFFFF);
     }
 
     // todo: kill player til theyre dead and bsod
     /*
     const char* fmtQuery = "SELECT version_mismatch FROM accounts_sessions WHERE charid = %u";
-    int32       ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id);
+    int32       ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id & 0xFFFF);
     if (ret != SQL_ERROR && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
     {
         if ((bool)Sql_GetUIntData(SqlHandle, 0))
@@ -2075,7 +2075,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
             const char* fmtQuery = "SELECT itemid, itemsubid, slot, quantity, sent, extra, sender, charname FROM delivery_box WHERE charid = %u AND box = %d "
                                    "AND slot < 8 ORDER BY slot;";
 
-            int32 ret = Sql_Query(SqlHandle, fmtQuery, PChar->id, boxtype);
+            int32 ret = Sql_Query(SqlHandle, fmtQuery, PChar->id & 0xFFFF, boxtype);
 
             if (ret != SQL_ERROR)
             {
@@ -2144,7 +2144,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                             return;
 
                         uint32 accid = Sql_GetUIntData(SqlHandle, 1);
-                        int32  ret   = Sql_Query(SqlHandle, "SELECT COUNT(*) FROM chars WHERE charid = '%u' AND accid = '%u' LIMIT 1;", PChar->id, accid);
+                        int32  ret   = Sql_Query(SqlHandle, "SELECT COUNT(*) FROM chars WHERE charid = '%u' AND accid = '%u' LIMIT 1;", PChar->id & 0xFFFF, accid);
                         if (ret == SQL_ERROR || Sql_NextRow(SqlHandle) != SQL_SUCCESS || Sql_GetUIntData(SqlHandle, 0) == 0)
                             return;
                         }
@@ -2162,7 +2162,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                     ret = Sql_Query(SqlHandle,
                                     "INSERT INTO delivery_box(charid, charname, box, slot, itemid, itemsubid, quantity, extra, senderid, sender) VALUES(%u, "
                                     "'%s', 2, %u, %u, %u, %u, '%s', %u, '%s'); ",
-                                    PChar->id, PChar->GetName(), slotID, PItem->getID(), PItem->getSubID(), quantity, extra, charid, data[0x10]);
+                                    PChar->id & 0xFFFF, PChar->GetName(), slotID, PItem->getID(), PItem->getSubID(), quantity, extra, charid, data[0x10]);
 
                     if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) == 1 && charutils::UpdateItem(PChar, LOC_INVENTORY, invslot, -(int32)quantity))
                     {
@@ -2206,7 +2206,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                             uint32 charid = Sql_GetUIntData(SqlHandle, 0);
 
                             ret = Sql_Query(SqlHandle, "UPDATE delivery_box SET sent = 1 WHERE charid = %u AND senderid = %u AND slot = %u AND box = 2;",
-                                            PChar->id, charid, slotID);
+                                            PChar->id & 0xFFFF, charid & 0xFFFF, slotID);
 
                             if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) == 1)
                             {
@@ -2216,7 +2216,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                                 ret = Sql_Query(SqlHandle,
                                                 "INSERT INTO delivery_box(charid, charname, box, itemid, itemsubid, quantity, extra, senderid, sender) "
                                                 "VALUES(%u, '%s', 1, %u, %u, %u, '%s', %u, '%s'); ",
-                                                charid, PItem->getReceiver(), PItem->getID(), PItem->getSubID(), PItem->getQuantity(), extra, PChar->id,
+                                                charid & 0xFFFF, PItem->getReceiver(), PItem->getID(), PItem->getSubID(), PItem->getQuantity(), extra, PChar->id & 0xFFFF,
                                                 PChar->GetName());
                                 if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) == 1)
                                 {
@@ -2261,14 +2261,14 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                         uint32 charid = Sql_GetUIntData(SqlHandle, 0);
                         ret           = Sql_Query(SqlHandle,
                                         "UPDATE delivery_box SET sent = 0 WHERE charid = %u AND box = 2 AND slot = %u AND sent = 1 AND received = 0 LIMIT 1;",
-                                        PChar->id, slotID);
+                                        PChar->id & 0xFFFF, slotID);
 
                         if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) == 1)
                         {
                             int32 ret = Sql_Query(SqlHandle,
                                                   "DELETE FROM delivery_box WHERE senderid = %u AND box = 1 AND charid = %u AND itemid = %u AND quantity = %u "
                                                   "AND slot >= 8 LIMIT 1;",
-                                                  PChar->id, charid, PItem->getID(), PItem->getQuantity());
+                                                  PChar->id & 0xFFFF, charid & 0xFFFF, PItem->getID(), PItem->getQuantity());
 
                             if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) == 1)
                             {
@@ -2295,10 +2295,10 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                             Sql_SetAutoCommit(SqlHandle, true);
                             int32 ret = Sql_Query(
                                 SqlHandle, "DELETE FROM delivery_box WHERE box = 2 AND charid = %u AND itemid = %u AND quantity = %u AND slot = %u LIMIT 1;",
-                                PChar->id, PItem->getID(), PItem->getQuantity(), slotID);
+                                PChar->id & 0xFFFF, PItem->getID(), PItem->getQuantity(), slotID);
                             if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) == 1)
                             {
-                                ShowError("Deleting orphaned outbox record. PlayerID: %d slotID: %d itemID: %d\n", PChar->id, slotID, PItem->getID());
+                                ShowError("Deleting orphaned outbox record. PlayerID: %d slotID: %d itemID: %d\n", PChar->id & 0xFFFF, slotID, PItem->getID());
                                 PChar->pushPacket(new CDeliveryBoxPacket(0x0F, boxtype, 0, 1));
                             }
                         }
@@ -2331,12 +2331,12 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                     }
                 }
                 std::string Query = "SELECT charid FROM delivery_box WHERE charid = %u AND box = 1 AND slot >= 8 ORDER BY slot ASC LIMIT %u;";
-                ret               = Sql_Query(SqlHandle, Query.c_str(), PChar->id, limit);
+                ret               = Sql_Query(SqlHandle, Query.c_str(), PChar->id & 0xFFFF, limit);
             }
             else if (boxtype == 0x02)
             {
                 std::string Query = "SELECT charid FROM delivery_box WHERE charid = %u AND received = 1 AND box = 2;";
-                ret               = Sql_Query(SqlHandle, Query.c_str(), PChar->id);
+                ret               = Sql_Query(SqlHandle, Query.c_str(), PChar->id & 0xFFFF);
             }
 
             if (ret != SQL_ERROR)
@@ -2360,7 +2360,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                     std::string Query = "SELECT itemid, itemsubid, quantity, extra, sender, senderid FROM delivery_box WHERE charid = %u AND box = 1 AND slot "
                                         ">= 8 ORDER BY slot ASC LIMIT 1;";
 
-                    int32 ret = Sql_Query(SqlHandle, Query.c_str(), PChar->id);
+                    int32 ret = Sql_Query(SqlHandle, Query.c_str(), PChar->id & 0xFFFF);
 
                     CItem* PItem = nullptr;
 
@@ -2388,18 +2388,18 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                                 Sql_Query(SqlHandle,
                                           "UPDATE delivery_box SET received = 1 WHERE senderid = %u AND charid = %u AND box = 2 AND received = 0 AND quantity "
                                           "= %u AND sent = 1 AND itemid = %u LIMIT 1;",
-                                          PChar->id, senderID, PItem->getQuantity(), PItem->getID());
+                                          PChar->id & 0xFFFF, senderID & 0xFFFF, PItem->getQuantity(), PItem->getID());
 
-                                Sql_Query(SqlHandle, "SELECT slot FROM delivery_box WHERE charid = %u AND box = 1 AND slot > 7 ORDER BY slot ASC;", PChar->id);
+                                Sql_Query(SqlHandle, "SELECT slot FROM delivery_box WHERE charid = %u AND box = 1 AND slot > 7 ORDER BY slot ASC;", PChar->id & 0xFFFF);
                                 if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) > 0 && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
                                 {
                                     uint8 queue = Sql_GetUIntData(SqlHandle, 0);
                                     Query       = "UPDATE delivery_box SET slot = %u WHERE charid = %u AND box = 1 AND slot = %u;";
-                                    ret         = Sql_Query(SqlHandle, Query.c_str(), slotID, PChar->id, queue);
+                                    ret         = Sql_Query(SqlHandle, Query.c_str(), slotID, PChar->id & 0xFFFF, queue);
                                     if (ret != SQL_ERROR)
                                     {
                                         Query = "UPDATE delivery_box SET slot = slot - 1 WHERE charid = %u AND box = 1 AND slot > %u;";
-                                        ret   = Sql_Query(SqlHandle, Query.c_str(), PChar->id, queue);
+                                        ret   = Sql_Query(SqlHandle, Query.c_str(), PChar->id & 0xFFFF, queue);
                                         if (ret != SQL_ERROR)
                                         {
                                             PChar->UContainer->SetItem(slotID, PItem);
@@ -2438,7 +2438,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
             uint32 senderID      = 0;
             std::string sender;
 
-            int32 ret = Sql_Query(SqlHandle, "SELECT slot, itemid, itemsubid, quantity, senderid, sender FROM delivery_box WHERE charid = %u AND received = 1 AND box = 2 ORDER BY slot ASC;", PChar->id);
+            int32 ret = Sql_Query(SqlHandle, "SELECT slot, itemid, itemsubid, quantity, senderid, sender FROM delivery_box WHERE charid = %u AND received = 1 AND box = 2 ORDER BY slot ASC;", PChar->id & 0xFFFF);
 
             if (ret != SQL_ERROR)
             {
@@ -2456,8 +2456,8 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                         CItem* PItem = PChar->UContainer->GetItem(slotID);
                         if (PItem->isSent())
                         {
-                            Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 2, %u, %u, %u, %u, '%s', 1);", PChar->id, PChar->name.c_str(), itemID, itemSubID, quantity, senderID, sender.c_str());
-                            ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND box = 2 AND slot = %u LIMIT 1;", PChar->id, slotID);
+                            Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 2, %u, %u, %u, %u, '%s', 1);", PChar->id & 0xFFFF, PChar->name.c_str(), itemID, itemSubID, quantity, senderID & 0xFFFF, sender.c_str());
+                            ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND box = 2 AND slot = %u LIMIT 1;", PChar->id & 0xFFFF, slotID);
                             if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) == 1)
                             {
                                 PChar->pushPacket(new CDeliveryBoxPacket(action, boxtype, 0, 0x02));
@@ -2496,7 +2496,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                 {
                     // Get sender of delivery record
                     int32 ret = Sql_Query(SqlHandle, "SELECT senderid, sender FROM delivery_box WHERE charid = %u AND slot = %u AND box = 1 LIMIT 1;",
-                                          PChar->id, slotID);
+                                          PChar->id & 0xFFFF, slotID);
 
                     if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) > 0 && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
                     {
@@ -2512,13 +2512,13 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                             ret = Sql_Query(SqlHandle,
                                             "INSERT INTO delivery_box(charid, charname, box, itemid, itemsubid, quantity, extra, senderid, sender) VALUES(%u, "
                                             "'%s', 1, %u, %u, %u, '%s', %u, '%s'); ",
-                                            senderID, senderName.c_str(), PItem->getID(), PItem->getSubID(), PItem->getQuantity(), extra, PChar->id,
+                                            senderID & 0xFFFF, senderName.c_str(), PItem->getID(), PItem->getSubID(), PItem->getQuantity(), extra, PChar->id & 0xFFFF,
                                             PChar->GetName());
 
                             if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) > 0)
                             {
                                 // Remove original delivery record
-                                Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 1, %u, %u, %u, %u, '%s', 2);", PChar->id, PChar->name.c_str(), PItem->getID(), PItem->getSubID(), PItem->getQuantity(), senderID, senderName.c_str());
+                                Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 1, %u, %u, %u, %u, '%s', 2);", PChar->id & 0xFFFF, PChar->name.c_str(), PItem->getID(), PItem->getSubID(), PItem->getQuantity(), senderID & 0xFFFF, senderName.c_str());
                                 ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND slot = %u AND box = 1 LIMIT 1;", PChar->id, slotID);
 
                                 if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) > 0)
@@ -2560,7 +2560,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
 
                 CItem* PItem = PChar->UContainer->GetItem(slotID);
                 int32 ret = SQL_ERROR;
-                ret = Sql_Query(SqlHandle, "SELECT itemid, itemsubid, quantity, senderid, sender FROM delivery_box WHERE charid = %u AND slot = %u AND box = %u LIMIT 1", PChar->id, slotID, boxtype);
+                ret = Sql_Query(SqlHandle, "SELECT itemid, itemsubid, quantity, senderid, sender FROM delivery_box WHERE charid = %u AND slot = %u AND box = %u LIMIT 1", PChar->id & 0xFFFF, slotID, boxtype);
                 if (ret == SQL_ERROR || Sql_NextRow(SqlHandle) != SQL_SUCCESS) {
                     return;
                 }
@@ -2583,13 +2583,13 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                 {
                     if (boxtype == 0x01)
                     {
-                        Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 1, %u, %u, %u, %u, '%s', 3);", PChar->id, PChar->name.c_str(), itemID, itemSubID, quantity, senderID, sender.c_str());
-                        ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND slot = %u AND box = %u LIMIT 1", PChar->id, slotID, boxtype);
+                        Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 1, %u, %u, %u, %u, '%s', 3);", PChar->id & 0xFFFF, PChar->name.c_str(), itemID, itemSubID, quantity, senderID & 0xFFFF, sender.c_str());
+                        ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND slot = %u AND box = %u LIMIT 1", PChar->id & 0xFFFF, slotID, boxtype);
                     }
                     else if (boxtype == 0x02)
                     {
-                        Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 2, %u, %u, %u, %u, '%s', 3);", PChar->id, PChar->name.c_str(), itemID, itemSubID, quantity, senderID, sender.c_str());
-                        ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND sent = 0 AND slot = %u AND box = %u LIMIT 1", PChar->id,
+                        Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 2, %u, %u, %u, %u, '%s', 3);", PChar->id & 0xFFFF, PChar->name.c_str(), itemID, itemSubID, quantity, senderID & 0xFFFF, sender.c_str());
+                        ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND sent = 0 AND slot = %u AND box = %u LIMIT 1", PChar->id & 0xFFFF,
                                         slotID, boxtype);
                     }
 
@@ -2634,7 +2634,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                 std::string sender;
 
                 int32 ret = SQL_ERROR;
-                ret = Sql_Query(SqlHandle, "SELECT itemid, itemsubid, quantity, senderid, sender FROM delivery_box WHERE charid = %u AND slot = %u AND box = 1 LIMIT 1", PChar->id, slotID);
+                ret = Sql_Query(SqlHandle, "SELECT itemid, itemsubid, quantity, senderid, sender FROM delivery_box WHERE charid = %u AND slot = %u AND box = 1 LIMIT 1", PChar->id & 0xFFFF, slotID);
                 if (ret == SQL_ERROR || Sql_NextRow(SqlHandle) != SQL_SUCCESS) {
                     return;
                 }
@@ -2644,8 +2644,8 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                 senderID = Sql_GetUIntData(SqlHandle, 3);
                 sender = (char*)Sql_GetData(SqlHandle, 4);
 
-                Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 1, %u, %u, %u, %u, '%s', 4);", PChar->id, PChar->name.c_str(), itemID, itemSubID, quantity, senderID, sender.c_str());
-                ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND slot = %u AND box = 1 LIMIT 1", PChar->id, slotID);
+                Sql_Query(SqlHandle, "INSERT INTO dbox_log (charid, charname, box, itemid, itemsubid, quantity, senderid, sender, op) VALUES (%u, '%s', 1, %u, %u, %u, %u, '%s', 4);", PChar->id & 0xFFFF, PChar->name.c_str(), itemID, itemSubID, quantity, senderID & 0xFFFF, sender.c_str());
+                ret = Sql_Query(SqlHandle, "DELETE FROM delivery_box WHERE charid = %u AND slot = %u AND box = 1 LIMIT 1", PChar->id & 0xFFFF, slotID);
 
                 if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0)
                 {
@@ -2665,7 +2665,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
             if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) > 0 && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
             {
                 uint32 accid = Sql_GetUIntData(SqlHandle, 0);
-                ret          = Sql_Query(SqlHandle, "SELECT COUNT(*) FROM chars WHERE charid = '%u' AND accid = '%u' LIMIT 1;", PChar->id, accid);
+                ret          = Sql_Query(SqlHandle, "SELECT COUNT(*) FROM chars WHERE charid = '%u' AND accid = '%u' LIMIT 1;", PChar->id & 0xFFFF, accid);
                 if (ret != SQL_ERROR && Sql_NextRow(SqlHandle) == SQL_SUCCESS && Sql_GetUIntData(SqlHandle, 0))
                 {
                     PChar->pushPacket(new CDeliveryBoxPacket(action, boxtype, 0xFF, 0x02));
@@ -2777,7 +2777,7 @@ void SmallPacket0x04E(map_session_data_t* const PSession, CCharEntity* const PCh
                 {
                     const char* Query = "SELECT itemid, price, stack FROM auction_house WHERE seller = %u and sale=0 ORDER BY id ASC;";
 
-                    int32 ret = Sql_Query(SqlHandle, Query, PChar->id);
+                    int32 ret = Sql_Query(SqlHandle, Query, PChar->id & 0xFFFF);
 
                     if (ret != SQL_ERROR && Sql_NumRows(SqlHandle))
                     {
@@ -2891,7 +2891,7 @@ void SmallPacket0x04E(map_session_data_t* const PSession, CCharEntity* const PCh
                 // Get the current number of items the player has for sale
                 const char* Query = "SELECT COUNT(*) FROM auction_house WHERE seller = %u AND sale=0;";
 
-                int32  ret         = Sql_Query(SqlHandle, Query, PChar->id);
+                int32  ret         = Sql_Query(SqlHandle, Query, PChar->id & 0xFFFF);
                 uint32 ah_listings = 0;
 
                 if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) != 0)
@@ -2910,7 +2910,7 @@ void SmallPacket0x04E(map_session_data_t* const PSession, CCharEntity* const PCh
 
                 const char* fmtQuery = "INSERT INTO auction_house(itemid, stack, seller, seller_name, date, price) VALUES(%u,%u,%u,'%s',%u,%u)";
 
-                if (Sql_Query(SqlHandle, fmtQuery, PItem->getID(), quantity == 0, PChar->id, PChar->GetName(), (uint32)time(nullptr), price) == SQL_ERROR)
+                if (Sql_Query(SqlHandle, fmtQuery, PItem->getID(), quantity == 0, PChar->id & 0xFFFF, PChar->GetName(), (uint32)time(nullptr), price) == SQL_ERROR)
                 {
                     ShowError(CL_RED "SmallPacket0x04E::AuctionHouse: Cannot insert item %s to database\n" CL_RESET, PItem->getName());
                     PChar->pushPacket(new CAuctionHousePacket(action, 197, 0, 0, quantity)); // failed to place up
@@ -3003,7 +3003,7 @@ void SmallPacket0x04E(map_session_data_t* const PSession, CCharEntity* const PCh
                 if (Sql_SetAutoCommit(SqlHandle, false) && Sql_TransactionStart(SqlHandle))
                 {
                     const char* fmtQuery = "DELETE FROM auction_house WHERE seller = %u AND itemid = %u AND stack = %u AND price = %u AND sale = 0 LIMIT 1;";
-                    int32       ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id, canceledItem.itemid, canceledItem.stack, canceledItem.price);
+                    int32       ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id & 0xFFFF, canceledItem.itemid, canceledItem.stack, canceledItem.price);
                     if (ret != SQL_ERROR && Sql_AffectedRows(SqlHandle))
                     {
                         CItem* PDelItem = itemutils::GetItemPointer(canceledItem.itemid);
@@ -4055,7 +4055,7 @@ void SmallPacket0x071(map_session_data_t* const PSession, CCharEntity* const PCh
                     if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) == 1 && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
                     {
                         uint32 id = Sql_GetUIntData(SqlHandle, 0);
-                        if (Sql_Query(SqlHandle, "DELETE FROM accounts_parties WHERE partyid = %u AND charid = %u;", PChar->id, id) == SQL_SUCCESS &&
+                        if (Sql_Query(SqlHandle, "DELETE FROM accounts_parties WHERE partyid = %u AND charid = %u;", PChar->id & 0xFFFF, id & 0xFFFF) == SQL_SUCCESS &&
                             Sql_AffectedRows(SqlHandle))
                         {
                             ShowDebug(CL_CYAN "%s has removed %s from party\n" CL_RESET, PChar->GetName(), data[0x0C]);
@@ -4446,13 +4446,13 @@ void SmallPacket0x083(map_session_data_t* const PSession, CCharEntity* const PCh
                 if (PChar->loc.zone->GetID() == ZONE_RULUDE_GARDENS &&
                     (itemID == 948 || itemID == 636 || itemID == 958 || itemID == 949 || itemID == 941 || itemID == 951))
                 {
-                    // Sql_Query(SqlHandle, "SELECT value FROM char_vars WHERE charid = %u AND varname = 'DabihShopBought';", PChar->id);
+                    // Sql_Query(SqlHandle, "SELECT value FROM char_vars WHERE charid = %u AND varname = 'DabihShopBought';", PChar->id & 0xFFFF);
                     // uint16 prev = 0;
                     // if (Sql_NumRows(SqlHandle) != 0 && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
                     // prev = Sql_GetUIntData(SqlHandle, 0);
                     Sql_Query(SqlHandle,
                               "INSERT INTO char_vars SET charid = %u, varname = 'DabihShopBought', value = %i ON DUPLICATE KEY UPDATE value = value + %i;",
-                              PChar->id, quantity, quantity);
+                              PChar->id & 0xFFFF, quantity, quantity);
                 }
             }
         }
@@ -5162,7 +5162,7 @@ void SmallPacket0x0BE(map_session_data_t* const PSession, CCharEntity* const PCh
         case 2: // change mode
         {
             // TODO: you can switch mode anywhere except in besieged & under level restriction
-            if (Sql_Query(SqlHandle, "UPDATE char_exp SET mode = %u WHERE charid = %u", operation, PChar->id) != SQL_ERROR)
+            if (Sql_Query(SqlHandle, "UPDATE char_exp SET mode = %u WHERE charid = %u", operation, PChar->id & 0xFFFF) != SQL_ERROR)
             {
                 PChar->MeritMode = operation;
                 PChar->pushPacket(new CMenuMeritPacket(PChar));
@@ -5301,7 +5301,7 @@ void SmallPacket0x0C4(map_session_data_t* const PSession, CCharEntity* const PCh
                 const char* Query =
                     "UPDATE char_inventory SET signature = '%s', extra = '%s', itemId = 513 WHERE charid = %u AND location = 0 AND slot = %u LIMIT 1";
 
-                if (Sql_Query(SqlHandle, Query, DecodedName, extra, PChar->id, SlotID) != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0)
+                if (Sql_Query(SqlHandle, Query, DecodedName, extra, PChar->id & 0xFFFF, SlotID) != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0)
                 {
                     PChar->pushPacket(new CInventoryItemPacket(PItemLinkshell, LocationID, SlotID));
                 }
@@ -5352,7 +5352,7 @@ void SmallPacket0x0C4(map_session_data_t* const PSession, CCharEntity* const PCh
                         char extra[sizeof(PItemLinkshell->m_extra) * 2 + 1];
                         Sql_EscapeStringLen(SqlHandle, extra, (const char*)PItemLinkshell->m_extra, sizeof(PItemLinkshell->m_extra));
                         const char* Query = "UPDATE char_inventory SET extra = '%s' WHERE charid = %u AND location = %u AND slot = %u LIMIT 1";
-                        Sql_Query(SqlHandle, Query, extra, PChar->id, PItemLinkshell->getLocationID(), PItemLinkshell->getSlotID());
+                        Sql_Query(SqlHandle, Query, extra, PChar->id & 0xFFFF, PItemLinkshell->getLocationID(), PItemLinkshell->getSlotID());
                         PChar->pushPacket(new CInventoryItemPacket(PItemLinkshell, PItemLinkshell->getLocationID(), PItemLinkshell->getSlotID()));
                         PChar->pushPacket(new CInventoryFinishPacket());
                         PChar->pushPacket(new CMessageStandardPacket(MsgStd::LinkshellNoLongerExists));
@@ -5485,7 +5485,7 @@ void SmallPacket0x0D5(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     if (PChar->m_HelpDeskMessageID > 0)
     {
         const char* fmtQuery = "UPDATE char_gmmessage SET `read` = 1 WHERE messageid = %u AND charid = %u;";
-        if (Sql_Query(SqlHandle, fmtQuery, PChar->m_HelpDeskMessageID, PChar->id) == SQL_SUCCESS)
+        if (Sql_Query(SqlHandle, fmtQuery, PChar->m_HelpDeskMessageID, PChar->id & 0xFFFF) == SQL_SUCCESS)
         {
             PChar->m_HelpDeskMessageID = 0;
             charutils::LoadHelpDeskMessage(PChar);
@@ -5665,7 +5665,7 @@ void SmallPacket0x0DD(map_session_data_t* const PSession, CCharEntity* const PCh
     // checkparam
     if (type == 0x02)
     {
-        if (PChar->id == id)
+        if ((PChar->id & 0xFFFF) == (id & 0xFFFF))
         {
             PChar->pushPacket(new CMessageBasicPacket(PChar, PChar, 0, 0, MSGBASIC_CHECKPARAM_NAME));
             PChar->pushPacket(new CMessageBasicPacket(PChar, PChar, 0, 0, MSGBASIC_CHECKPARAM_ILVL));
@@ -5825,7 +5825,7 @@ void SmallPacket0x0DE(map_session_data_t* const PSession, CCharEntity* const PCh
     char message[256];
     Sql_EscapeString(SqlHandle, message, (const char*)data[4]);
 
-    Sql_Query(SqlHandle, "UPDATE char_stats SET bazaar_message = '%s' WHERE charid = %u;", message, PChar->id);
+    Sql_Query(SqlHandle, "UPDATE char_stats SET bazaar_message = '%s' WHERE charid = %u;", message, PChar->id & 0xFFFF);
     return;
 }
 
@@ -5915,12 +5915,12 @@ void SmallPacket0x0E0(map_session_data_t* const PSession, CCharEntity* const PCh
     if (PChar->search.messagetype != 0 && message_raw[0] != '\0') {
         Sql_Query(SqlHandle,
             "UPDATE char_stats SET seacom_type = %u, search_message = '%s' WHERE charid = %u;",
-            PChar->search.messagetype, message, PChar->id);
+            PChar->search.messagetype, message, PChar->id & 0xFFFF);
     }
     else {
         Sql_Query(SqlHandle,
             "UPDATE char_stats SET seacom_type = NULL, search_message = NULL WHERE charid = %u;",
-            PChar->id);
+            PChar->id & 0xFFFF);
     }
     return;
 }
@@ -6321,7 +6321,7 @@ void SmallPacket0x0FA(map_session_data_t* const PSession, CCharEntity* const PCh
                             "extra = '%s' "
                             "WHERE location = %u AND slot = %u AND charid = %u";
 
-        if (Sql_Query(SqlHandle, Query, extra, containerID, slotID, PChar->id) != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0 && !wasInstalled)
+        if (Sql_Query(SqlHandle, Query, extra, containerID, slotID, PChar->id & 0xFFFF) != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0 && !wasInstalled)
         {
             PChar->getStorage(LOC_STORAGE)->AddBuff(PItem->getStorage());
 
@@ -6387,7 +6387,7 @@ void SmallPacket0x0FB(map_session_data_t* const PSession, CCharEntity* const PCh
                                 "extra = '%s' "
                                 "WHERE location = %u AND slot = %u AND charid = %u";
 
-            if (Sql_Query(SqlHandle, Query, extra, containerID, slotID, PChar->id) != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0)
+            if (Sql_Query(SqlHandle, Query, extra, containerID, slotID, PChar->id & 0xFFFF) != SQL_ERROR && Sql_AffectedRows(SqlHandle) != 0)
             {
                 uint8 NewSize = PItemContainer->GetSize() - RemovedSize;
                 for (uint8 SlotID = PItemContainer->GetSize(); SlotID > NewSize; --SlotID)
@@ -6476,7 +6476,7 @@ void SmallPacket0x0FC(map_session_data_t* const PSession, CCharEntity* const PCh
     char extra[sizeof(PPotItem->m_extra) * 2 + 1];
     Sql_EscapeStringLen(SqlHandle, extra, (const char*)PPotItem->m_extra, sizeof(PPotItem->m_extra));
     const char* Query = "UPDATE char_inventory SET extra = '%s' WHERE charid = %u AND location = %u AND slot = %u";
-    Sql_Query(SqlHandle, Query, extra, PChar->id, PPotItem->getLocationID(), PPotItem->getSlotID());
+    Sql_Query(SqlHandle, Query, extra, PChar->id & 0xFFFF, PPotItem->getLocationID(), PPotItem->getSlotID());
 
     PChar->pushPacket(new CFurnitureInteractPacket(PPotItem, potContainerID, potSlotID));
 
@@ -6538,7 +6538,7 @@ void SmallPacket0x0FD(map_session_data_t* const PSession, CCharEntity* const PCh
             char extra[sizeof(PItem->m_extra) * 2 + 1];
             Sql_EscapeStringLen(SqlHandle, extra, (const char*)PItem->m_extra, sizeof(PItem->m_extra));
             const char* Query = "UPDATE char_inventory SET extra = '%s' WHERE charid = %u AND location = %u AND slot = %u";
-            Sql_Query(SqlHandle, Query, extra, PChar->id, PItem->getLocationID(), PItem->getSlotID());
+            Sql_Query(SqlHandle, Query, extra, PChar->id & 0xFFFF, PItem->getLocationID(), PItem->getSlotID());
         }
     }
 
@@ -6603,7 +6603,7 @@ void SmallPacket0x0FE(map_session_data_t* const PSession, CCharEntity* const PCh
         char extra[sizeof(PItem->m_extra) * 2 + 1];
         Sql_EscapeStringLen(SqlHandle, extra, (const char*)PItem->m_extra, sizeof(PItem->m_extra));
         const char* Query = "UPDATE char_inventory SET extra = '%s' WHERE charid = %u AND location = %u AND slot = %u";
-        Sql_Query(SqlHandle, Query, extra, PChar->id, PItem->getLocationID(), PItem->getSlotID());
+        Sql_Query(SqlHandle, Query, extra, PChar->id & 0xFFFF, PItem->getLocationID(), PItem->getSlotID());
 
         PChar->pushPacket(new CInventoryItemPacket(PItem, containerID, slotID));
         PChar->pushPacket(new CInventoryFinishPacket());
@@ -6640,7 +6640,7 @@ void SmallPacket0x0FF(map_session_data_t* const PSession, CCharEntity* const PCh
         char extra[sizeof(PItem->m_extra) * 2 + 1];
         Sql_EscapeStringLen(SqlHandle, extra, (const char*)PItem->m_extra, sizeof(PItem->m_extra));
         const char* Query = "UPDATE char_inventory SET extra = '%s' WHERE charid = %u AND location = %u AND slot = %u";
-        Sql_Query(SqlHandle, Query, extra, PChar->id, PItem->getLocationID(), PItem->getSlotID());
+        Sql_Query(SqlHandle, Query, extra, PChar->id & 0xFFFF, PItem->getLocationID(), PItem->getSlotID());
 
         PChar->pushPacket(new CInventoryItemPacket(PItem, containerID, slotID));
         PChar->pushPacket(new CInventoryFinishPacket());
@@ -7035,7 +7035,7 @@ void SmallPacket0x106(map_session_data_t* const PSession, CCharEntity* const PCh
         Sql_EscapeStringLen(SqlHandle, buyer_name, PChar->name.c_str(), sizeof(buyer_name) < PChar->name.length() ? sizeof(buyer_name) : PChar->name.length());
         Sql_EscapeStringLen(SqlHandle, seller_name, PTarget->name.c_str(), sizeof(seller_name) < PTarget->name.length() ? sizeof(seller_name) : PTarget->name.length());
         const char* Query = "INSERT INTO bazaar_log (seller_id, seller_name, buyer_id, buyer_name, item_id, single_price, quantity, total_sale, tax, total_paid) VALUES (%u, '%s', %u, '%s', %u, %u, %u, %u, %u, %u);";
-        Sql_Query(SqlHandle, Query, PTarget->id, seller_name, PChar->id, buyer_name, PItem->getID(), PBazaarItem->getCharPrice(), Quantity, Price, PriceWithTax-Price, PriceWithTax);
+        Sql_Query(SqlHandle, Query, PTarget->id & 0xFFFF, seller_name, PChar->id & 0xFFFF, buyer_name, PItem->getID(), PBazaarItem->getCharPrice(), Quantity, Price, PriceWithTax-Price, PriceWithTax);
 
         PChar->pushPacket(new CBazaarPurchasePacket(PTarget, true));
 
@@ -7143,7 +7143,7 @@ void SmallPacket0x10A(map_session_data_t* const PSession, CCharEntity* const PCh
 
     if ((PItem != nullptr) && !(PItem->getFlag() & ITEM_FLAG_EX) && (!PItem->isSubType(ITEM_LOCKED) || PItem->getCharPrice() != 0))
     {
-        Sql_Query(SqlHandle, "UPDATE char_inventory SET bazaar = %u WHERE charid = %u AND location = 0 AND slot = %u;", price, PChar->id, slotID);
+        Sql_Query(SqlHandle, "UPDATE char_inventory SET bazaar = %u WHERE charid = %u AND location = 0 AND slot = %u;", price, PChar->id & 0xFFFF, slotID);
 
         PItem->setCharPrice(price);
         PItem->setSubType((price == 0 ? ITEM_UNLOCKED : ITEM_LOCKED));

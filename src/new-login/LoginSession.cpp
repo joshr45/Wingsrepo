@@ -376,7 +376,7 @@ void LoginSession::LoadCharacterList()
             LOG_WARNING("Account has a character without a valid matching content ID, this character will be skipped.");
             continue;
         }
-        mCharacters[j].dwCharacterID = pResultSet->get_unsigned32(1);
+        mCharacters[j].dwCharacterID = (pResultSet->get_unsigned32(1) & 0xFFFF) | (pResultSet->get_unsigned32(3) << 16);
         strncpy(mCharacters[j].szCharName, pResultSet->get_string(2).c_str(), sizeof(mCharacters[i].szCharName));
         mCharacters[j].cWorldID = static_cast<uint8_t>(pResultSet->get_unsigned32(3));
         mCharacters[j].cMainJob = static_cast<uint8_t>(pResultSet->get_unsigned32(4));

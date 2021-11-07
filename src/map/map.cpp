@@ -186,7 +186,7 @@ map_session_data_t* mapsession_createsession(uint32 ip, uint16 port, bool force)
             memcpy(temp, prunedSessionsList.at(at).m_2_session_key, 20);
             char session_key[20 * 2 + 1];
             bin2hex(session_key, temp, sizeof(temp));
-            Sql_Query(SqlHandle, fmtQuery, prunedSessionsList.at(at).m_0_accid, prunedSessionsList.at(at).m_1_charid, session_key, prunedSessionsList.at(at).m_3_ZoneIP,
+            Sql_Query(SqlHandle, fmtQuery, prunedSessionsList.at(at).m_0_accid, prunedSessionsList.at(at).m_1_charid & 0xFFFF, session_key, prunedSessionsList.at(at).m_3_ZoneIP,
                 prunedSessionsList.at(at).m_4_ZonePort, prunedSessionsList.at(at).m_5_client_addr, prunedSessionsList.at(at).m_6_version_mismatch, client_ver_esc);
             return map_session_data;
         }
@@ -302,7 +302,7 @@ int32 do_init(int32 argc, char** argv)
     while (Sql_NextRow(SqlHandle) == SQL_SUCCESS)
     {
         uint32 v0 = Sql_GetUIntData(SqlHandle, 0);
-        uint32 v1 = Sql_GetUIntData(SqlHandle, 1);
+        uint32 v1 = (Sql_GetUIntData(SqlHandle, 1) & 0xFFFF) | (map_config.world_id << 16);
         uint32 v2[5];
         char* c_str = nullptr;
         Sql_GetData(SqlHandle, 2, &c_str, nullptr);
@@ -700,10 +700,11 @@ int32 recv_parse(int8* buff, size_t* buffsize, sockaddr_in* from, map_session_da
         if (map_session_data->PChar == nullptr)
         {
             uint32 CharID = ref<uint32>(buff, FFXI_HEADER_SIZE + 0x0C);
+            CharID |= (map_config.world_id << 16);
 
             const char* fmtQuery = "SELECT charid FROM chars WHERE charid = %u LIMIT 1;";
 
-            int32 ret = Sql_Query(SqlHandle, fmtQuery, CharID);
+            int32 ret = Sql_Query(SqlHandle, fmtQuery, CharID & 0xFFFF);
 
             if (ret == SQL_ERROR ||
                 Sql_NumRows(SqlHandle) == 0 ||
@@ -715,7 +716,7 @@ int32 recv_parse(int8* buff, size_t* buffsize, sockaddr_in* from, map_session_da
 
             fmtQuery = "SELECT session_key FROM accounts_sessions WHERE charid = %u LIMIT 1;";
 
-            ret = Sql_Query(SqlHandle, fmtQuery, CharID);
+            ret = Sql_Query(SqlHandle, fmtQuery, CharID & 0xFFFF);
 
             if (ret == SQL_ERROR ||
                 Sql_NumRows(SqlHandle) == 0 ||
@@ -2509,10 +2510,10 @@ int32 map_close_session(time_point tick, map_session_data_t* map_session_data)
         if (map_session_data->shuttingDown == 1)
         {
             map_session_data->PChar->m_disconnecting = true;
-            Sql_Query(SqlHandle, "DELETE FROM accounts_sessions WHERE charid = %u", map_session_data->PChar->id);
+            Sql_Query(SqlHandle, "DELETE FROM accounts_sessions WHERE charid = %u", map_session_data->PChar->id & 0xFFFF);
             // flist stuff
-            if (FLgetSetting(map_session_data->PChar, 2) == 1) { Sql_Query(SqlHandle, "UPDATE flist_settings SET lastonline = %u WHERE callingchar = %u;", (uint32)CVanaTime::getInstance()->getVanaTime(), map_session_data->PChar->id); }
-            Sql_Query(SqlHandle, "UPDATE flist SET status = 0 WHERE listedchar = %u", map_session_data->PChar->id);
+            if (FLgetSetting(map_session_data->PChar, 2) == 1) { Sql_Query(SqlHandle, "UPDATE flist_settings SET lastonline = %u WHERE callingchar = %u;", (uint32)CVanaTime::getInstance()->getVanaTime(), map_session_data->PChar->id & 0xFFFF); }
+            Sql_Query(SqlHandle, "UPDATE flist SET status = 0 WHERE listedchar = %u", map_session_data->PChar->id & 0xFFFF);
             FLnotify(map_session_data->PChar, true, false);
         }
 
@@ -2601,8 +2602,8 @@ int32 map_cleanup(time_point tick, CTaskMgr::CTask* PTask)
                         ShowDebug(CL_CYAN"map_cleanup: %s timed out, closing session\n" CL_RESET, PChar->GetName());
 
                         // flist stuff
-                        if (FLgetSetting(map_session_data->PChar, 2) == 1) { Sql_Query(SqlHandle, "UPDATE flist_settings SET lastonline = %u WHERE callingchar = %u;", (uint32)CVanaTime::getInstance()->getVanaTime(), map_session_data->PChar->id); }
-                        Sql_Query(SqlHandle, "UPDATE flist SET status = 0 WHERE listedchar = %u", map_session_data->PChar->id);
+                        if (FLgetSetting(map_session_data->PChar, 2) == 1) { Sql_Query(SqlHandle, "UPDATE flist_settings SET lastonline = %u WHERE callingchar = %u;", (uint32)CVanaTime::getInstance()->getVanaTime(), map_session_data->PChar->id & 0xFFFF); }
+                        Sql_Query(SqlHandle, "UPDATE flist SET status = 0 WHERE listedchar = %u", map_session_data->PChar->id & 0xFFFF);
                         FLnotify(PChar, true, false);
 
                         PChar->status = STATUS_SHUTDOWN;
@@ -2610,7 +2611,7 @@ int32 map_cleanup(time_point tick, CTaskMgr::CTask* PTask)
                     }
                     map_session_data->PChar->m_disconnecting = true;
                     map_session_data->PChar->StatusEffectContainer->SaveStatusEffects(true);
-                    Sql_Query(SqlHandle, "DELETE FROM accounts_sessions WHERE charid = %u;", map_session_data->PChar->id);
+                    Sql_Query(SqlHandle, "DELETE FROM accounts_sessions WHERE charid = %u;", map_session_data->PChar->id & 0xFFFF);
 
                     delete[] map_session_data->server_packet_data;
                     delete map_session_data->PChar;
