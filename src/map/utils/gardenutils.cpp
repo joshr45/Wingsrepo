@@ -52,6 +52,10 @@ namespace gardenutils
 {
     void LoadResultList()
     {
+        if (map_config.disable_gardening) {
+            return;
+        }
+
         int32 ret = Sql_Query(SqlHandle, "SELECT resultId, seed, element1, element2, result, min_quantity, max_quantity, weight FROM gardening_results");
 
         if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) != 0)
@@ -77,12 +81,21 @@ namespace gardenutils
 
     void Initialize()
     {
+        if (map_config.disable_gardening) {
+            return;
+        }
+
         LoadResultList();
     }
 
     void UpdateGardening(CCharEntity* PChar, bool sendPacket)
     {
         TracyZoneScoped;
+
+        if (map_config.disable_gardening) {
+            return;
+        }
+
         uint32 vanatime = CVanaTime::getInstance()->getVanaTime();
         for (auto containerID : { LOC_MOGSAFE, LOC_MOGSAFE2 })
         {
@@ -128,6 +141,11 @@ namespace gardenutils
 
     std::tuple<uint16, uint8> CalculateResults(CCharEntity* PChar, CItemFlowerpot* PItem)
     {
+
+        if (map_config.disable_gardening) {
+            return std::tuple<uint16, uint8>(0, 0);
+        }
+
         std::array<uint8, 9> elements = { 0 };
         elements[PItem->getCommonCrystalFeed()] += 10;
         if (PItem->isTree())
@@ -291,6 +309,10 @@ namespace gardenutils
 
     void GrowToNextStage(CItemFlowerpot* PItem, bool growFromFeed /*= false*/)
     {
+        if (map_config.disable_gardening) {
+            return;
+        }
+
         switch (PItem->getStage())
         {
             case FLOWERPOT_STAGE_EMPTY:
@@ -341,6 +363,10 @@ namespace gardenutils
 
     uint8 GetStageDuration(CItemFlowerpot* PItem, bool growFromFeed /*= false*/)
     {
+        if (map_config.disable_gardening) {
+            return 0;
+        }
+
         switch (PItem->getPlant())
         {
             case FLOWERPOT_PLANT_FRUIT_SEEDS:

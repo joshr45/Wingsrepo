@@ -82,6 +82,7 @@ public:
     int32 updateEventString(lua_State*);    // (string, string, string, string, uint32, ...)
     int32 getEventTarget(lua_State*);       //
     int32 release(lua_State*);              // Stops event
+    int32 releaseStandard(lua_State*);      // Stops event w/ standard release flag
 
     int32 setFlag(lua_State*);
     int32 moghouseFlag(lua_State*);
@@ -89,6 +90,7 @@ public:
 
     // Object Identification
     int32 getID(lua_State *L);              // Gets Entity Id
+    int32 getGroupID(lua_State *L);         // Gets mob groupid
     int32 getShortID(lua_State *L);
     int32 getCursorTarget(lua_State *L);    // Returns the ID any object under players in game cursor.
 
@@ -198,6 +200,7 @@ public:
     int32 delItem(lua_State*);
     int32 addUsedItem(lua_State*);           // Add charged item with timer already on full cooldown
     int32 addTempItem(lua_State*);           // Add temp item to Entity Temp inventory
+    int32 addLinkpearl(lua_State *L);        // Add a linkshell pearl
     int32 hasWornItem(lua_State*);           // Check if the item is already worn (player:hasWornItem(itemid))
     int32 createWornItem(lua_State*);        // Update this item in worn item (player:createWornItem(itemid))
 
@@ -764,6 +767,7 @@ public:
     int32 delRoamFlag(lua_State* L);
     int32 deaggroPlayer(lua_State* L);
     int32 deaggroAll(lua_State* L);
+    int32 isFishingEnabled(lua_State* L);
 
     // Helpdesk functions courtesy of Setzor from Eden
     int32 sendHelpDeskMsg(lua_State*);      // Send a Help Desk (GM) Message to character
@@ -792,6 +796,20 @@ public:
     int32 lsConciergeUpdate(lua_State *L);   // handle Concierge's onEventUpdate (listing and distribution)
     int32 lsConciergeRegister(lua_State *L); // handle Concierge's Linkshell Registration
     int32 lsConciergeCancel(lua_State *L);   // handle Concierge's Linkshell Cancellation
+
+    // Tonberry custom stuff
+    int32 flip(lua_State*);
+    int32 checkVersionMismatch(lua_State*);
+    int32 getInfluenceMult(lua_State*);
+    int32 ahaMain(lua_State*);
+    int32 isWeekendEvent(lua_State*);
+    int32 checkOdo(lua_State*);
+    int32 getAggro(lua_State*);
+    int32 getLink(lua_State*);
+    int32 getDetectionType(lua_State*);
+    int32 setPVP(lua_State*);
+    int32 isPVP(lua_State*);
+    int32 isCustomizationEnabled(lua_State*);
 };
 
 #endif

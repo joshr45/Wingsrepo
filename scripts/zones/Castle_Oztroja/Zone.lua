@@ -37,7 +37,15 @@ end
 
 function onGameHour(zone)
     local VanadielHour = VanadielHour()
-
+    
+    -- Auto pop Odontotyrannus if a player gets nearby
+    -- and fishing is disabled. If fishing is enabled
+    -- this does nothing.
+    local odonto = GetMobByID(ID.mob.ODONTOTYRANNUS)
+    if (not odonto:isAlive()) then
+        odonto:checkOdo()
+    end
+    
     -- every game day ...
     if VanadielHour % 24 == 0 then
         CASTLE_OZTROJA.pickNewCombo() -- update combination for brass door on floor 2

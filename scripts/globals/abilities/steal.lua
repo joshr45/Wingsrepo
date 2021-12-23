@@ -49,6 +49,12 @@ function onUseAbility(player, target, ability, action)
         thfLevel = player:getSubLvl()
     end
 
+    if target:isPC() then
+        ability:setMsg(tpz.msg.basic.STEAL_FAIL) -- Failed to steal
+        action:animation(target:getID(), 182)
+        return 0
+    end
+
     local stealMod = player:getMod(tpz.mod.STEAL)
 
     local stealChance = 50 + stealMod * 2 + thfLevel - target:getMainLvl()

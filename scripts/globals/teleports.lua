@@ -3,6 +3,7 @@
 -----------------------------------
 require("scripts/globals/settings")
 require("scripts/globals/zone")
+require("scripts/globals/hook")
 
 tpz = tpz or {}
 tpz.teleport = tpz.teleport or {}
@@ -538,4 +539,8 @@ tpz.teleport.explorerMoogleOnEventFinish = function(player, csid, option, event)
             tpz.teleport.toExplorerMoogle(player, 249)
         end
     end
+end
+
+if hookOnLoadTeleports ~= nil then
+    hookOnLoadTeleports()
 end

@@ -107,6 +107,38 @@ namespace conquest
             "windurst_influence = %d, beastmen_influence = %d WHERE region_id = %u;", influences[0], influences[1], influences[2], influences[3], static_cast<uint8>(region));
     }
 
+    float GetInfluenceMultiplier(CCharEntity* PChar)
+    {
+
+        float mult = 1.0f;
+
+        if (!map_config.enable_tonberry_xp_buffs) {
+            return mult;
+        }
+
+        Sql_Query(SqlHandle, "SELECT weeksago, rank FROM conquest_record WHERE nation = %u ORDER BY weeksago ASC LIMIT 10;", PChar->profile.nation);
+        while (Sql_NextRow(SqlHandle) == SQL_SUCCESS && Sql_GetUIntData(SqlHandle, 1) != 1)
+        {
+            mult += 0.5f;
+        }
+        if (mult <= 2.0f)
+        {
+            mult = 1.0f;
+        }
+        else
+        {
+            mult -= 1.0f;
+        }
+
+        if (mult > 4.0f)
+        {
+            mult = 4.0f;
+        }
+
+        return mult;
+
+    }
+
     /************************************************************************
     *    GainInfluencePoints                                                *
     *    +1 point for nation							                    *
@@ -116,6 +148,9 @@ namespace conquest
     void GainInfluencePoints(CCharEntity* PChar, uint32 points)
     {
         points += (uint32)(PChar->getMod(Mod::CONQUEST_REGION_BONUS) / 100.0);
+        if (map_config.enable_tonberry_xp_buffs) {
+            points = (uint32)((float)points * GetInfluenceMultiplier(PChar));
+        }
         conquest::UpdateInfluencePoints(points, PChar->profile.nation, PChar->loc.zone->GetRegionID());
     }
 
@@ -350,7 +385,106 @@ namespace conquest
             }
         });
 
-		ShowDebug(CL_CYAN"Conquest Weekly Update is finished\n" CL_RESET);
+        Sql_Query(SqlHandle, "UPDATE conquest_record SET weeksago = weeksago + 1;");
+
+        uint8 balance = GetBalance();
+
+        bool windy = true;
+        bool basty = true;
+        bool sandy = true;
+        if ((balance & 0b111100) == 0b010100)
+        {
+            // windy basty tied for 1st
+            windy = false;
+            basty = false;
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,2,2);"); // actually insert 2nd
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,1,2);");
+        }
+        if ((balance & 0b110011) == 0b010001)
+        {
+            // windy sandy tied for 1st
+            windy = false;
+            sandy = false;
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,2,2);"); // actually insert 2nd
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,0,2);");
+        }
+        if ((balance & 0b110011) == 0b010001)
+        {
+            // basty sandy tied for 1st
+            basty = false;
+            sandy = false;
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,1,2);"); // actually insert 2nd
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,0,2);");
+        }
+        if ((balance & 0b111111) == 0b010101)
+        {
+            // everyone is first
+            windy = false;
+            basty = false;
+            sandy = false;
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,2,3);"); // actually insert 3rd
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,1,3);");
+            Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,0,3);");
+        }
+
+        if (windy)
+        {
+            if ((balance & 0b110000) == 0b010000)
+            {
+                // windy 1st
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,2,1);");
+            }
+            else if ((balance & 0b110000) == 0b100000)
+            {
+                // windy 2nd
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,2,2);");
+            }
+            else
+            {
+                // windy 3rd
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,2,3);");
+            }
+        }
+
+        if (basty)
+        {
+            if ((balance & 0b001100) == 0b000100)
+            {
+                // basty 1st
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,1,1);");
+            }
+            else if ((balance & 0b001100) == 0b001000)
+            {
+                // basty 2nd
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,1,2);");
+            }
+            else
+            {
+                // basty 3rd
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,1,3);");
+            }
+        }
+
+        if (sandy)
+        {
+            if ((balance & 0b000011) == 0b000001)
+            {
+                // sandy 1st
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,0,1);");
+            }
+            else if ((balance & 0b000011) == 0b000010)
+            {
+                // sandy 2nd
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,0,2);");
+            }
+            else
+            {
+                // sandy 3rd
+                Sql_Query(SqlHandle, "INSERT INTO conquest_record VALUES (0,0,3);");
+            }
+        }
+
+        ShowDebug(CL_CYAN"Conquest Weekly Update is finished\n" CL_RESET);
 	}
 
 	/************************************************************************

@@ -243,7 +243,7 @@ const int8* CItem::getName()
     return (const int8*)m_name.c_str();
 }
 
-void CItem::setName(int8* name)
+void CItem::setName(const int8* name)
 {
     m_name.clear();
     m_name.insert(0, (const char*)name);

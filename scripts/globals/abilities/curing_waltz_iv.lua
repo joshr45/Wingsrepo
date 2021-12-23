@@ -53,7 +53,7 @@ function onUseAbility(player, target, ability)
     local cure = 0
 
     --Performing mj check.
-    if mjob == tpz.job.DNC then
+    if ((mjob == tpz.job.DNC) or (player:isCustomizationEnabled(1) and sjob == tpz.job.DNC)) then
         cure = (vit+chr)+450
     else
         cure = (vit+chr)*0.5+450

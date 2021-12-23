@@ -18,6 +18,21 @@ function onUseAbility(player, target, ability)
         ability:setMsg(tpz.msg.basic.JA_NO_EFFECT)
         return 0
     end
+
+    if target:isPC() then
+        if math.random(1,100) < 75 + player:getStat(14)*3 - target:getStat(14)*3 then
+            ability:setMsg(138) -- The x seems friendlier
+            target:disengage()
+            if not target:hasStatusEffect(tpz.effect.STUN) then
+                target:addStatusEffect(tpz.effect.STUN,1,0,1)
+            end
+            player:setLocalVar("Tamed_Mob",target:getID())
+        else
+            ability:setMsg(tpz.msg.basic.JA_MISS_2)
+        end
+        return 0
+    end
+    
     if target:getMobMod(tpz.mobMod.CHARMABLE) == 0 then
         ability:setMsg(tpz.msg.basic.JA_NO_EFFECT)
         return 0

@@ -112,7 +112,7 @@ public:
     void        setSent(bool sent);
 
     const int8* getName();
-    void        setName(int8* name);
+    void        setName(const int8* name);
 
     const int8* getSender();
     void        setSender(int8* sender);

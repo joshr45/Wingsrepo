@@ -10,6 +10,9 @@ require("scripts/globals/status")
 -----------------------------------
 
 function onTrade(player, npc, trade)
+    if not player:isFishingEnabled() then
+        return
+    end
     local newRank = tradeTestItem(player, npc, trade, tpz.skill.FISHING)
 
     if
@@ -29,6 +32,9 @@ function onTrade(player, npc, trade)
 end
 
 function onTrigger(player, npc)
+    if not player:isFishingEnabled() then
+        return
+    end
     local craftSkill = player:getSkillLevel(tpz.skill.FISHING)
     local testItem = getTestItem(player, npc, tpz.skill.FISHING)
     local guildMember = isGuildMember(player, 5)

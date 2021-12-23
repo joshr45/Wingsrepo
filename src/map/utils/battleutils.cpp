@@ -346,7 +346,7 @@ namespace battleutils
         if ((((PSkill->getSkillLevel() > 0 && PChar->GetSkill(PSkill->getType()) >= PSkill->getSkillLevel() &&
             (PSkill->getUnlockId() == 0 || charutils::hasLearnedWeaponskill(PChar, PSkill->getUnlockId()))) ||
             (PSkill->getSkillLevel() == 0 && (PSkill->getUnlockId() == 0 || charutils::hasLearnedWeaponskill(PChar, PSkill->getUnlockId())))) &&
-            (PSkill->getJob(PChar->GetMJob()) > 0 || (PSkill->getJob(PChar->GetSJob()) > 0 && !PSkill->mainOnly()))))
+            (PSkill->getJob(PChar->GetMJob()) > 0 || (PSkill->getJob(PChar->GetSJob()) > 0 && (map_config.dual_main_job || !PSkill->mainOnly())))))
         {
             return true;
         }
@@ -641,7 +641,7 @@ namespace battleutils
             }
             else // Struck the target
             {
-                if (PDefender->objtype == TYPE_PC)
+                if (PDefender->objtype == TYPE_PC && ((CCharEntity*)PDefender)->m_isPvp == false)
                 {
                     // Check for skillup
                     uint8 skilltype = 0;
@@ -1563,7 +1563,23 @@ namespace battleutils
         acc += accBonus;
 
         int eva = PDefender->EVA();
-        hitrate = hitrate + (acc - eva) / 2 + (PAttacker->GetMLevel() - PDefender->GetMLevel()) * 2;
+
+        bool pvpattacker = false;
+        bool pvpdefender = false;
+
+        if (PAttacker->objtype == TYPE_PC && ((CCharEntity*)PAttacker)->m_isPvp)
+            pvpattacker = true;
+        else if (PAttacker->objtype == TYPE_PET && ((CBattleEntity*)PAttacker)->PMaster->objtype == TYPE_PC && ((CCharEntity*)(((CBattleEntity*)PAttacker)->PMaster))->m_isPvp)
+            pvpattacker = true;
+        if (PDefender->objtype == TYPE_PC && ((CCharEntity*)PDefender)->m_isPvp)
+            pvpdefender = true;
+        else if (PDefender->objtype == TYPE_PET && ((CBattleEntity*)PDefender)->PMaster->objtype == TYPE_PC && ((CCharEntity*)(((CBattleEntity*)PDefender)->PMaster))->m_isPvp)
+            pvpdefender = true;
+
+        if (pvpattacker && pvpdefender) // no level correction in pvp
+            hitrate = hitrate + (acc - eva) / 2;
+        else
+            hitrate = hitrate + (acc - eva) / 2 + (PAttacker->GetMLevel() - PDefender->GetMLevel()) * 2;
 
         uint8 finalhitrate = std::clamp(hitrate, 20, 95);
         return finalhitrate;
@@ -1910,14 +1926,23 @@ namespace battleutils
             PWeapon->getSkillType() != SKILL_HAND_TO_HAND) && PDefender->PAI->IsEngaged())
         {
             JOBTYPE job = PDefender->GetMJob();
+            JOBTYPE sjob = PDefender->GetSJob();
 
-            if (job == JOB_NIN || job == JOB_SAM ||
-                job == JOB_THF || job == JOB_BST || job == JOB_DRG ||
-                job == JOB_PLD || job == JOB_WAR || job == JOB_BRD ||
-                job == JOB_DRK || job == JOB_RDM || job == JOB_COR ||
-                job == JOB_DNC || job == JOB_PUP || job == JOB_RUN ||
-                job == JOB_BLU || job == JOB_MNK || job == JOB_GEO ||
-                job == JOB_SCH)
+            if ((job == JOB_NIN || job == JOB_SAM ||
+                 job == JOB_THF || job == JOB_BST || job == JOB_DRG ||
+                 job == JOB_PLD || job == JOB_WAR || job == JOB_BRD ||
+                 job == JOB_DRK || job == JOB_RDM || job == JOB_COR ||
+                 job == JOB_DNC || job == JOB_PUP || job == JOB_RUN ||
+                 job == JOB_BLU || job == JOB_MNK || job == JOB_GEO ||
+                 job == JOB_SCH) ||
+                (map_config.dual_main_job && (
+                    sjob == JOB_NIN || sjob == JOB_SAM ||
+                    sjob == JOB_THF || sjob == JOB_BST || sjob == JOB_DRG ||
+                    sjob == JOB_PLD || sjob == JOB_WAR || sjob == JOB_BRD ||
+                    sjob == JOB_DRK || sjob == JOB_RDM || sjob == JOB_COR ||
+                    sjob == JOB_DNC || sjob == JOB_PUP || sjob == JOB_RUN ||
+                    sjob == JOB_BLU || sjob == JOB_MNK || sjob == JOB_GEO ||
+                    sjob == JOB_SCH)))
             {
                 // http://wiki.ffxiclopedia.org/wiki/Talk:Parrying_Skill
                 // {(Parry Skill x .125) + ([Player Agi - Enemy Dex] x .125)} x Diff
@@ -2572,7 +2597,7 @@ namespace battleutils
                 crithitrate = 100;
             }
         }
-        else if (PAttacker->objtype == TYPE_PC && PAttacker->GetMJob() == JOB_THF && charutils::hasTrait((CCharEntity*)PAttacker, TRAIT_ASSASSIN) && (!ignoreSneakTrickAttack) &&
+        else if (PAttacker->objtype == TYPE_PC && (map_config.dual_main_job || (PAttacker->GetMJob() == JOB_THF)) && charutils::hasTrait((CCharEntity*)PAttacker, TRAIT_ASSASSIN) && (!ignoreSneakTrickAttack) &&
             PAttacker->StatusEffectContainer->HasStatusEffect(EFFECT_TRICK_ATTACK))
         {
             CBattleEntity* taChar = battleutils::getAvailableTrickAttackChar(PAttacker, PDefender);
@@ -2950,7 +2975,7 @@ namespace battleutils
         }
 
         // hasso occasionally triggers Zanshin after landing a normal attack, only active while Samurai is set as Main
-        if (PEntity->GetMJob() == JOB_SAM)
+        if ((PEntity->GetMJob() == JOB_SAM) || (map_config.dual_main_job && (PEntity->GetSJob() == JOB_SAM)))
         {
             if (PEntity->StatusEffectContainer->HasStatusEffect(EFFECT_HASSO))
             {
@@ -4234,7 +4259,7 @@ namespace battleutils
             uint16 enmityReduction = PAttacker->getMod(Mod::HIGH_JUMP_ENMITY_REDUCTION) + 50;
 
             // DRG sub has only 30% enmity removed instead of 50%.
-            if (PAttacker->GetSJob() == JOB_DRG)
+            if ((!map_config.dual_main_job) && (PAttacker->GetSJob() == JOB_DRG))
             {
                 enmityReduction = PAttacker->getMod(Mod::HIGH_JUMP_ENMITY_REDUCTION) + 30;
             }
@@ -4252,7 +4277,7 @@ namespace battleutils
             PVictim->addTP(-(totalDamage * 20));
 
         // try skill up (CharEntity only)
-        if (PAttacker->objtype == TYPE_PC)
+        if ((PAttacker->objtype == TYPE_PC) && (((CCharEntity*)PAttacker)->m_isPvp == false))
             charutils::TrySkillUP((CCharEntity*)PAttacker, (SKILLTYPE)PWeapon->getSkillType(), PVictim->GetMLevel());
 
         // jump + high jump doesn't give any tp to victim
@@ -5911,7 +5936,7 @@ namespace battleutils
         {
             if (PSpell->getAOE() == SPELLAOE_RADIAL_MANI && PEntity->StatusEffectContainer->HasStatusEffect(EFFECT_MANIFESTATION))
             {
-                if (PEntity->GetMJob() == JOB_SCH)
+                if ((PEntity->GetMJob() == JOB_SCH) || ((map_config.dual_main_job && (PEntity->GetSJob() == JOB_SCH))))
                 {
                     recast *= 2;
                 }

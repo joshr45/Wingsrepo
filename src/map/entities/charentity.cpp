@@ -142,6 +142,8 @@ CCharEntity::CCharEntity()
     memset(&m_WeaponSkills, 0, sizeof(m_WeaponSkills));
     memset(&m_SetBlueSpells, 0, sizeof(m_SetBlueSpells));
     memset(&m_unlockedAttachments, 0, sizeof(m_unlockedAttachments));
+    lastInCombat = 1;
+    lastZoneTimer = 0;
 
     memset(&m_questLog, 0, sizeof(m_questLog));
     memset(&m_missionLog, 0, sizeof(m_missionLog));
@@ -224,6 +226,9 @@ CCharEntity::CCharEntity()
     petZoningInfo.petHP = 0;
     petZoningInfo.petMP = 0;
     petZoningInfo.petTP = 0;
+
+    m_isPvp = false;
+    m_pvpSync = 0;
 
     m_LastEngagedTargID = 0;
 
@@ -992,6 +997,8 @@ bool CCharEntity::OnAttack(CAttackState& state, action_t& action)
     controller->setLastAttackTime(server_clock::now());
     auto ret = CBattleEntity::OnAttack(state, action);
 
+    this->lastInCombat = (uint32)CVanaTime::getInstance()->getVanaTime();
+
     auto PTarget = static_cast<CBattleEntity*>(state.GetTarget());
 
     if (PTarget->isDead() && PTarget->objtype == TYPE_MOB)
@@ -1009,6 +1016,12 @@ void CCharEntity::OnCastFinished(CMagicState& state, action_t& action)
 
     auto PSpell = state.GetSpell();
     auto PTarget = static_cast<CBattleEntity*>(state.GetTarget());
+
+    if (PTarget->id != this->id && !PSpell->isHeal() && !PSpell->isBuff())
+    {
+        this->lastInCombat = (uint32)CVanaTime::getInstance()->getVanaTime();
+    }
+
     PRecastContainer->Add(RECAST_MAGIC, static_cast<uint16>(PSpell->getID()), action.recast);
 
     for (auto&& actionList : action.actionLists)
@@ -1094,7 +1107,7 @@ void CCharEntity::OnCastFinished(CMagicState& state, action_t& action)
     }
 
     charutils::RemoveStratagems(this, PSpell);
-    if (PSpell->tookEffect())
+    if (PSpell->tookEffect() && this->m_isPvp == false)
     {
         charutils::TrySkillUP(this, (SKILLTYPE)PSpell->getSkillType(), PTarget->GetMLevel());
         if (PSpell->getSkillType() == SKILL_SINGING)
@@ -1122,6 +1135,8 @@ void CCharEntity::OnCastInterrupted(CMagicState& state, action_t& action, MSGBAS
 {
     CBattleEntity::OnCastInterrupted(state, action, msg);
 
+    this->lastInCombat = (uint32)CVanaTime::getInstance()->getVanaTime();
+
     auto message = state.GetErrorMsg();
 
     if (message)
@@ -1133,6 +1148,8 @@ void CCharEntity::OnCastInterrupted(CMagicState& state, action_t& action, MSGBAS
 void CCharEntity::OnWeaponSkillFinished(CWeaponSkillState& state, action_t& action)
 {
     CBattleEntity::OnWeaponSkillFinished(state, action);
+
+    this->lastInCombat = (uint32)CVanaTime::getInstance()->getVanaTime();
 
     auto PWeaponSkill = state.GetSkill();
     auto PBattleTarget = static_cast<CBattleEntity*>(state.GetTarget());
@@ -1282,6 +1299,11 @@ void CCharEntity::OnAbility(CAbilityState& state, action_t& action)
         return;
     }
     if (this->StatusEffectContainer->HasStatusEffect(EFFECT_AMNESIA)) {
+        pushPacket(new CMessageBasicPacket(this, this, 0, 0, MSGBASIC_UNABLE_TO_USE_JA2));
+        return;
+    }
+    if (this->m_isPvp && PAbility->getRecastTime() == 7200) // no 2 hours in pvp
+    {
         pushPacket(new CMessageBasicPacket(this, this, 0, 0, MSGBASIC_UNABLE_TO_USE_JA2));
         return;
     }
@@ -1590,6 +1612,8 @@ void CCharEntity::OnRangedAttack(CRangeState& state, action_t& action)
 {
     auto PTarget = static_cast<CBattleEntity*>(state.GetTarget());
 
+    this->lastInCombat = (uint32)CVanaTime::getInstance()->getVanaTime();
+
     int32 damage = 0;
     int32 totalDamage = 0;
 
@@ -1694,12 +1718,12 @@ void CCharEntity::OnRangedAttack(CRangeState& state, action_t& action)
                         damage = attackutils::CheckForDamageMultiplier(this, PItem, damage, PHYSICAL_ATTACK_TYPE::RANGED, SLOT_RANGED);
                     }
 
-                    if (PItem != nullptr)
+                    if (PItem != nullptr && this->m_isPvp == false)
                     {
                         charutils::TrySkillUP(this, (SKILLTYPE)PItem->getSkillType(), PTarget->GetMLevel());
                     }
                 }
-                else if (slot == SLOT_AMMO && PAmmo != nullptr)
+                else if (slot == SLOT_AMMO && PAmmo != nullptr && this->m_isPvp == false)
                 {
                     charutils::TrySkillUP(this, (SKILLTYPE)PAmmo->getSkillType(), PTarget->GetMLevel());
                 }
@@ -1874,6 +1898,18 @@ void CCharEntity::OnRaise()
     if (m_hasRaise > 0)
     {
         uint8 weaknessLvl = 1;
+        bool fullheal = false;
+        bool fullmp = false;
+        if (m_hasRaise > 10) {
+            m_hasRaise -= 10;
+            if (map_config.enable_tonberry_xp_buffs) {
+                fullheal = true; // divine seal. raise with full hp
+            }
+        }
+        if (GetLocalVar("PvpDeath") != 0) {
+            fullheal = true;
+            fullmp = true;
+        }
         if (StatusEffectContainer->HasStatusEffect(EFFECT_WEAKNESS))
         {
             //double weakness!
@@ -1881,12 +1917,15 @@ void CCharEntity::OnRaise()
         }
 
         //add weakness effect (75% reduction in HP/MP)
-        if (GetLocalVar("MijinGakure") == 0 && m_hasRaise <= 5)
+        if (GetLocalVar("MijinGakure") == 0 && GetLocalVar("PvpDeath") == 0 && m_hasRaise != 4 && m_hasRaise != 14)
         {
-            CStatusEffect* PWeaknessEffect = new CStatusEffect(EFFECT_WEAKNESS, EFFECT_WEAKNESS, weaknessLvl, 0, 300);
+            uint16 weakDur = 300;
+            if (fullheal)
+                weakDur = 120;
+            CStatusEffect* PWeaknessEffect = new CStatusEffect(EFFECT_WEAKNESS, EFFECT_WEAKNESS, weaknessLvl, 0, weakDur);
             StatusEffectContainer->AddStatusEffect(PWeaknessEffect);
         }
-        else if (GetLocalVar("MijinGakure") == 0 && m_hasRaise == 4) // arise, 3min
+        else if (GetLocalVar("MijinGakure") == 0 && GetLocalVar("PvpDeath") == 0 && (m_hasRaise == 4 || m_hasRaise == 14)) // arise, 3min
         {
             CStatusEffect* PWeaknessEffect = new CStatusEffect(EFFECT_WEAKNESS, EFFECT_WEAKNESS, weaknessLvl, 0, 180);
             StatusEffectContainer->AddStatusEffect(PWeaknessEffect);
@@ -1903,7 +1942,7 @@ void CCharEntity::OnRaise()
 
         list.ActionTargetID = id;
         // Mijin Gakure used with MIJIN_RERAISE MOD
-        if (GetLocalVar("MijinGakure") != 0 && getMod(Mod::MIJIN_RERAISE) != 0)
+        if ((GetLocalVar("MijinGakure") != 0 && getMod(Mod::MIJIN_RERAISE) != 0) || (GetLocalVar("PvpDeath") != 0))
         {
             actionTarget.animation = 511;
             hpReturned = (uint16)(GetMaxHP());
@@ -1940,7 +1979,13 @@ void CCharEntity::OnRaise()
             hpReturned = GetMaxHP();
             ratioReturned = 1.0f - (map_config.exp_retain);
         }
+        if (fullheal) {
+            hpReturned = GetMaxHP();
+        }
         addHP(((hpReturned < 1) ? 1 : hpReturned));
+        if (fullmp) {
+            addMP(9999);
+        }
         updatemask |= UPDATE_HP;
         actionTarget.speceffect = SPECEFFECT_RAISE;
 
@@ -1969,6 +2014,7 @@ void CCharEntity::OnRaise()
         }
 
         SetLocalVar("MijinGakure", 0);
+        SetLocalVar("PvpDeath", 0);
 
         m_hasRaise = 0;
     }
@@ -2047,7 +2093,7 @@ CBattleEntity* CCharEntity::IsValidTarget(uint16 targid, uint16 validTargetFlags
     auto PTarget = CBattleEntity::IsValidTarget(targid, validTargetFlags, errMsg);
     if (PTarget)
     {
-        if (PTarget->objtype == TYPE_PC && charutils::IsAidBlocked(this, static_cast<CCharEntity*>(PTarget)))
+        if (PTarget->objtype == TYPE_PC && charutils::IsAidBlocked(this, static_cast<CCharEntity*>(PTarget)) && ((CCharEntity*)PTarget)->m_isPvp == false)
         {
             // Target is blocking assistance
             errMsg = std::make_unique<CMessageSystemPacket>(0, 0, 225);
@@ -2102,8 +2148,8 @@ void CCharEntity::Die()
     //influence for conquest system
     conquest::LoseInfluencePoints(this);
 
-    // we lose xp if we didn't use mijin gakure AND (we aren't in a battlefield OR battlefiled rules say we lose xp
-    if (GetLocalVar("MijinGakure") == 0 && (!PBattlefield || (PBattlefield->GetRuleMask() & RULES_LOSE_EXP)))
+    // we lose xp if we didn't use mijin gakure AND we're not in PvP mode AND (we aren't in a battlefield OR battlefiled rules say we lose xp
+    if (GetLocalVar("MijinGakure") == 0 && GetLocalVar("PvpDeath") == 0 && (!PBattlefield || (PBattlefield->GetRuleMask() & RULES_LOSE_EXP)))
     {
         float retainPercent = std::clamp(map_config.exp_retain + getMod(Mod::EXPERIENCE_RETAINED) / 100.0f, 0.0f, 1.0f);
         charutils::DelExperiencePoints(this, retainPercent, 0);
@@ -2134,6 +2180,32 @@ void CCharEntity::Die(duration _duration)
     // If player allegiance is not reset on death they will auto-homepoint
     allegiance = ALLEGIANCE_PLAYER;
 
+    bool pvpdeath = false;
+    ZONETYPE zonetype = ZONETYPE_NONE;
+    if (loc.zone) {
+        zonetype = loc.zone->GetType();
+    }
+
+    if (
+        m_isPvp && PLastAttacker && (PLastAttacker->objtype == TYPE_PC || (PLastAttacker->objtype == TYPE_PET && PLastAttacker->PMaster->objtype == TYPE_PC)) &&
+        (zonetype == ZONETYPE_CITY)
+        )
+        pvpdeath = true;
+
+    if (
+        m_isPvp && !PLastAttacker &&
+        (zonetype == ZONETYPE_CITY)
+        )
+        pvpdeath = true;
+
+    if (m_pvpSync) {
+        StatusEffectContainer->DelStatusEffect(EFFECT_LEVEL_SYNC);
+    }
+
+    m_isPvp = false;
+    m_pvpSync = 0;
+    SetLocalVar("PvpDeath", pvpdeath ? 1 : 0);
+
     // reraise modifiers
     if (this->getMod(Mod::RERAISE_I) > 0)
         m_hasRaise = 1;
@@ -2146,6 +2218,10 @@ void CCharEntity::Die(duration _duration)
     // MIJIN_RERAISE checks
     if (m_hasRaise == 0 && this->getMod(Mod::MIJIN_RERAISE) > 0)
         m_hasRaise = 1;
+
+    if (pvpdeath) {
+        m_hasRaise = 1;
+    }
 
     CBattleEntity::Die();
 }

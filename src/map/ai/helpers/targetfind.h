@@ -1,4 +1,4 @@
-/*
+﻿/*
 ===========================================================================
 
 Copyright (c) 2010-2015 Darkstar Dev Teams
@@ -57,7 +57,8 @@ enum FINDFLAGS
     FINDFLAGS_ALLIANCE = 2, // force target alliance
     FINDFLAGS_PET = 4, // force target pet
     FINDFLAGS_UNLIMITED = 8, // unlimited distance
-    FINDFLAGS_HIT_ALL = 16 //hit all targets, regardless of party
+    FINDFLAGS_HIT_ALL = 16, //hit all targets, regardless of party
+    FINDFLAGS_ON_ENEMY = 32 // PvP only: this ability/spell is being used on an enemy player!
 };
 
 /*
@@ -100,10 +101,11 @@ public:
     void findWithinCone(CBattleEntity* PTarget, float distance, float angle, uint8 flags = FINDFLAGS_NONE, uint8 extraRotation = 0);
 
     // add all targets in contexts
-	void addAllInZone(CBattleEntity* PTarget, bool withPet);
-	void addAllInAlliance(CBattleEntity* PTarget, bool withPet);
-	void addAllInParty(CBattleEntity* PTarget, bool withPet);
-	void addAllInMobList(CBattleEntity* PTarget, bool withPet);
+    void addAllOnTeam(CBattleEntity* PTarget, bool withPet, uint8 friendlyteam);
+    void addAllInZone(CBattleEntity* PTarget, bool withPet);
+    void addAllInAlliance(CBattleEntity* PTarget, bool withPet, uint8 friendlyteam, bool ignoreteam);
+    void addAllInParty(CBattleEntity* PTarget, bool withPet, uint8 friendlyteam);
+    void addAllInMobList(CBattleEntity* PTarget, bool withPet);
     void addAllInEnmityList();
     void addAllInRange(CBattleEntity* PTarget, float radius, uint8 allegiance);
     void addEntity(CBattleEntity* PTarget, bool withPet);

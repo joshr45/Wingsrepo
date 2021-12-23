@@ -47,12 +47,13 @@ enum WYVERNTYPE
 class CPetEntity : public CMobEntity
 {
 public:
-	 CPetEntity(PETTYPE petType);						// конструктор
-	~CPetEntity();						// деструктор
-	PETTYPE getPetType();
+    CPetEntity(PETTYPE petType);						// конструктор
+    ~CPetEntity();						// деструктор
+    PETTYPE getPetType();
     bool isBstPet();
-	uint8 m_Element;
-	uint32 m_PetID;
+    bool m_IsSpiritPet;
+    uint8 m_Element;
+    uint32 m_PetID;
     std::string GetScriptName();
 
     WYVERNTYPE getWyvernType();
@@ -64,7 +65,7 @@ public:
     virtual bool ValidTarget(CBattleEntity* PInitiator, uint16 targetFlags) override;
 
 private:
-	PETTYPE m_PetType;					//the type of pet e.g. avatar/wyvern/jugpet etc
+    PETTYPE m_PetType;					//the type of pet e.g. avatar/wyvern/jugpet etc
 };
 
 #endif

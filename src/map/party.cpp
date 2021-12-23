@@ -37,6 +37,7 @@
 #include "latent_effect_container.h"
 #include "status_effect_container.h"
 
+#include "packets/chat_message.h"
 #include "packets/char_sync.h"
 #include "packets/char_update.h"
 #include "packets/char_abilities.h"
@@ -1003,6 +1004,23 @@ void CParty::SetSyncTarget(int8* MemberName, uint16 message)
         {
             CCharEntity* PChar = (CCharEntity*)PEntity;
             //enable level sync
+            for (uint8 i = 0; i < members.size(); ++i)
+            {
+                if ((map_config.level_sync_range > 0) && (members.at(i)->GetMLevel() > PEntity->GetMLevel() + map_config.level_sync_range))
+                {
+                    std::string errmsg = "Party members must be within a " + std::to_string(map_config.level_sync_range) + " level range of the sync target.";
+                    ((CCharEntity*)GetLeader())->pushPacket(new CChatMessagePacket((CCharEntity*)GetLeader(), MESSAGE_SYSTEM_3, errmsg.c_str(), "Server"));
+                    return;
+                }
+                if (members.at(i)->objtype == TYPE_PC)
+                {
+                    CCharEntity* PMember = (CCharEntity*)members.at(i);
+                    if ((PMember->m_isPvp) || (PMember->allegiance != PChar->allegiance)) {
+                        ((CCharEntity*)GetLeader())->pushPacket(new CChatMessagePacket((CCharEntity*)GetLeader(), MESSAGE_SYSTEM_3, "One or more of your party members must disable duel mode to enable level sync.", "Server"));
+                        return;
+                    }
+                }
+            }
             if (PChar->GetMLevel() < 10)
             {
                 ((CCharEntity*)GetLeader())->pushPacket(new CMessageBasicPacket((CCharEntity*)GetLeader(), (CCharEntity*)GetLeader(), 0, 10, 541));

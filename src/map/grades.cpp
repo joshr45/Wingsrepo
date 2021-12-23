@@ -199,4 +199,56 @@ namespace grade
         return StatScale[rank][scale];
     }
 
+    void LoadGradeOverrides()
+    {
+        const char* sql = "SELECT entity_type, entity, grade_type, grade FROM grades;";
+        int32       ret = Sql_Query(SqlHandle, sql);
+        if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) != 0)
+        {
+            while (Sql_NextRow(SqlHandle) == SQL_SUCCESS)
+            {
+                uint32 entity_type = Sql_GetUIntData(SqlHandle, 0);
+                uint32 entity = Sql_GetUIntData(SqlHandle, 1);
+                uint32 grade_type = Sql_GetUIntData(SqlHandle, 2);
+                uint32 grade = Sql_GetUIntData(SqlHandle, 3);
+                if (entity_type == 1) {
+                    // Job
+                    if (entity > 22) {
+                        // No such job
+                        ShowError("LoadGradeOverrides: Invalid job ID: %u", entity);
+                        continue;
+                    }
+                    if (grade_type > 8) {
+                        // No such grade
+                        ShowError("LoadGradeOverrides: Invalid grade ID: %u", grade_type);
+                        continue;
+                    }
+                    JobGrades[entity][grade_type] = grade;
+                }
+                else if (entity_type == 2) {
+                    // Race
+                    if (entity > 4) {
+                        // No such race
+                        // Note that we do not have different entries for genders
+                        // hence there are five races and not seven.
+                        ShowError("LoadGradeOverrides: Invalid race ID: %u", entity);
+                        continue;
+                    }
+                    if (grade_type > 8) {
+                        // No such grade
+                        ShowError("LoadGradeOverrides: Invalid grade ID: %u", grade_type);
+                        continue;
+                    }
+                    RaceGrades[entity][grade_type] = grade;
+                }
+                else {
+                    ShowError("LoadGradeOverrides: Invalid entity type: %u", entity_type);
+                }
+            }
+        }
+        else {
+            ShowError("LoadGradeOverrides: Unable to load grade override list, using default values.");
+        }
+    }
+
 }; // namespace grade

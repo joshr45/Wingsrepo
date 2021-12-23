@@ -242,9 +242,17 @@ public:
     void					setPetZoningInfo();				// set pet zoning info (when zoning and logging out)
     void					resetPetZoningInfo();			// reset pet zoning info (when changing job ect)
     uint8					m_SetBlueSpells[20];			// The 0x200 offsetted blue magic spell IDs which the user has set. (1 byte per spell)
+    uint32                  lastInCombat;                   // last time in combat, determined by the last time a spell was cast or an attack was done. used to disallow setting BLU spells in combat
+    uint32                  lastZoneTimer;                  // last time the player zoned. used to disallow enabling pvp too fast after zone
 
     UnlockedAttachments_t	m_unlockedAttachments;			// Unlocked Automaton Attachments (1 bit per attachment)
     CAutomatonEntity*       PAutomaton;                     // Automaton statistics
+
+    bool                    m_isPvp;                        // While we rely on the allegiance flag for basic logic, this flag modifies the behavior of skillups, xp etc.
+    uint8                   m_pvpSync;                      //
+    float                   m_lastxpos;                     //
+    float                   m_lastypos;                     //
+    uint8                   m_PCismoving;                   //
 
     fishresponse_t* hookedFish;         // Currently hooked fish/item/monster
     uint32          nextFishTime;       // When char is allowed to fish again     

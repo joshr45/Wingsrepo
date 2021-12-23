@@ -100,7 +100,12 @@ void CTargetFind::findWithinArea(CBattleEntity* PTarget, AOERADIUS radiusType, f
     if (isPlayer)
     {
         // handle this as a player
-        if (m_PMasterTarget->objtype == TYPE_PC)
+        if (m_PMasterTarget->objtype == TYPE_PC && (flags & FINDFLAGS_ON_ENEMY)) // PvP only: casting/using on an ENEMY PLAYER!
+        {
+            m_findType = FIND_PLAYER_PLAYER;
+            addAllOnTeam(m_PMasterTarget, true, ((CCharEntity*)m_PBattleEntity)->allegiance);
+        }
+        else if (m_PMasterTarget->objtype == TYPE_PC)
         {
             // players will never need to add whole alliance
             m_findType = FIND_PLAYER_PLAYER;
@@ -110,12 +115,21 @@ void CTargetFind::findWithinArea(CBattleEntity* PTarget, AOERADIUS radiusType, f
                 // player -ra spells should never hit whole alliance
                 if ((m_findFlags & FINDFLAGS_ALLIANCE) && m_PMasterTarget->PParty->m_PAlliance != nullptr)
                 {
-                    addAllInAlliance(m_PMasterTarget, withPet);
+                    addAllInAlliance(m_PMasterTarget, withPet, ((CCharEntity*)m_PBattleEntity)->allegiance, false);
                 }
                 else
                 {
                     // add party members
-                    addAllInParty(m_PMasterTarget, withPet);
+                    uint8 team = ALLEGIANCE_PLAYER;
+                    if (m_PBattleEntity->PMaster != nullptr && m_PBattleEntity->PMaster->objtype == TYPE_PC)
+                    {
+                        team = ( ((CCharEntity*)(m_PBattleEntity->PMaster))->allegiance );
+                    }
+                    else
+                    {
+                        team = (uint8)( ((CCharEntity*)m_PBattleEntity)->allegiance );
+                    }
+                    addAllInParty(m_PMasterTarget, withPet, team);
                 }
             }
             else 
@@ -154,7 +168,7 @@ void CTargetFind::findWithinArea(CBattleEntity* PTarget, AOERADIUS radiusType, f
         }
         else
         {
-            addAllInAlliance(m_PMasterTarget, withPet);
+            addAllInAlliance(m_PMasterTarget, withPet, ALLEGIANCE_PLAYER, true);
 
             // Is the monster casting on a player..
             if (m_findType == FIND_MONSTER_PLAYER)
@@ -226,6 +240,15 @@ void CTargetFind::addAllInMobList(CBattleEntity* PTarget, bool withPet)
     }
 }
 
+void CTargetFind::addAllOnTeam(CBattleEntity* PTarget, bool withPet, uint8 friendlyteam)
+{
+    zoneutils::GetZone(PTarget->getZone())->ForEachCharInstance(PTarget, [&](CCharEntity* PChar) {
+        if (PChar && ((CCharEntity*)PChar)->m_isPvp && ((CCharEntity*)PChar)->allegiance != (ALLEGIANCETYPE)friendlyteam) {
+            addEntity(PChar, withPet);
+        }
+    });
+}
+
 void CTargetFind::addAllInZone(CBattleEntity* PTarget, bool withPet)
 {
     TracyZoneScoped;
@@ -246,21 +269,25 @@ void CTargetFind::addAllInZone(CBattleEntity* PTarget, bool withPet)
 	});
 }
 
-void CTargetFind::addAllInAlliance(CBattleEntity* PTarget, bool withPet)
+void CTargetFind::addAllInAlliance(CBattleEntity* PTarget, bool withPet, uint8 friendlyteam, bool ignoreteam)
 {
-    PTarget->ForAlliance([this, withPet](CBattleEntity* PMember)
+    PTarget->ForAlliance([this, withPet, friendlyteam, ignoreteam](CBattleEntity* PMember)
     {
-        addEntity(PMember, withPet);
+        if (ignoreteam)
+            addEntity(PMember, withPet);
+        else if (PMember->objtype == TYPE_PC && ((CCharEntity*)PMember)->allegiance == friendlyteam)
+            addEntity(PMember, withPet);
     });
 }
 
-void CTargetFind::addAllInParty(CBattleEntity* PTarget, bool withPet)
+void CTargetFind::addAllInParty(CBattleEntity* PTarget, bool withPet, uint8 friendlyteam)
 {
     if (PTarget->objtype == TYPE_PC)
     {
-        static_cast<CCharEntity*>(PTarget)->ForPartyWithTrusts([this, withPet](CBattleEntity* PMember)
+        static_cast<CCharEntity*>(PTarget)->ForPartyWithTrusts([this, withPet, friendlyteam](CBattleEntity* PMember)
         {
-            addEntity(PMember, withPet);
+            if (PMember->objtype == TYPE_PC && ((CCharEntity*)PMember)->allegiance == friendlyteam )
+                addEntity(PMember, withPet);
         });
     }
     else

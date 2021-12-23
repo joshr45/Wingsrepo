@@ -67,6 +67,9 @@ namespace zoneutils
     int32 GetServerVariable(const char* varName);
     void SetServerVariable(const char* varName, int32 varVal);
     void AddServerVariable(const char* varName, int32 varVal);
+
+    // Custom events
+    int32 TonberryWeekendEventTask(time_point tick, CTaskMgr::CTask* PTask);
 };
 
 #endif

@@ -31,8 +31,10 @@ function onUseAbility(player, target, ability)
 
     dmg = utils.stoneskin(target, dmg)
     target:takeDamage(dmg, player, tpz.attackType.SPECIAL, tpz.damageType.ELEMENTAL)
-    target:updateEnmityFromDamage(player, dmg)
-    target:updateClaim(player)
+    if not target:isPC() then
+        target:updateEnmityFromDamage(player, dmg)
+        target:updateClaim(player)
+    end
     player:delStatusEffect(tpz.effect.BOOST)
 
     return dmg

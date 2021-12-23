@@ -647,6 +647,10 @@ namespace fishingutils
 
     int32 CatchFish(CCharEntity* PChar, uint16 FishID, bool BigFish, uint16 length, uint16 weight, uint8 Count = 1)
     {
+        if (map_config.disable_fishing) {
+            return 0;
+        }
+
         uint16 MessageOffset = GetMessageOffset(PChar->getZone());
         PChar->animation = ANIMATION_NEW_FISHING_CAUGHT;
         PChar->updatemask |= UPDATE_HP;
@@ -683,6 +687,10 @@ namespace fishingutils
 
     int32 CatchItem(CCharEntity* PChar, uint16 ItemID, uint8 Count = 1)
     {
+        if (map_config.disable_fishing) {
+            return 0;
+        }
+
         uint16 MessageOffset = GetMessageOffset(PChar->getZone());
         PChar->animation = ANIMATION_NEW_FISHING_CAUGHT;
         PChar->updatemask |= UPDATE_HP;
@@ -714,6 +722,10 @@ namespace fishingutils
 
     int32 CatchMonster(CCharEntity* PChar, uint32 MobID)
     {
+        if (map_config.disable_fishing) {
+            return 0;
+        }
+
         uint16 MessageOffset = GetMessageOffset(PChar->getZone());
 
         CMobEntity* PMob = (CMobEntity*)zoneutils::GetEntity(MobID, TYPE_MOB);
@@ -753,6 +765,10 @@ namespace fishingutils
 
     int32 CatchChest(CCharEntity* PChar, uint32 NpcID)
     {
+        if (map_config.disable_fishing) {
+            return 0;
+        }
+
         uint16 MessageOffset = GetMessageOffset(PChar->getZone());
 
         // @todo: get chest npc (i.e. jade etui)
@@ -856,6 +872,10 @@ namespace fishingutils
 
     void FishingSkillup(CCharEntity* PChar, uint8 catchLevel, uint8 successType)
     {
+        if (map_config.disable_fishing) {
+            return;
+        }
+
         if (successType == FISHINGSUCCESSTYPE_NONE)
             return;
 
@@ -987,6 +1007,11 @@ namespace fishingutils
         CItemWeapon* Bait = nullptr;
         uint8 FishingAreaID = 0;
 
+        if (map_config.disable_fishing) {
+            PChar->pushPacket(new CReleasePacket(PChar, RELEASE_FISHING));
+            return;
+        }
+
         if (charutils::GetCharVar(PChar, "FishingDenied") == 1) {
             charutils::AddCharVar(PChar, "FishingDeniedAttempts", 1);
             // Let them fish... a change on the LUA side makes them never catch anything
@@ -1092,6 +1117,10 @@ namespace fishingutils
 
     void ReelInCatch(CCharEntity* PChar)
     {
+        if (map_config.disable_fishing) {
+            return;
+        }
+
         if (PChar->hookedFish != nullptr) {
             switch (PChar->hookedFish->catchtype)
             {
@@ -1146,6 +1175,10 @@ namespace fishingutils
 
     void FishingAction(CCharEntity* PChar, FISHACTION action, uint16 stamina, uint32 special)
     {
+        if (map_config.disable_fishing) {
+            return;
+        }
+
         uint16 MessageOffset = GetMessageOffset(PChar->getZone());
         uint32 vanaTime = CVanaTime::getInstance()->getVanaTime();
 

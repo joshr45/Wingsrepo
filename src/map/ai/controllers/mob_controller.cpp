@@ -1,4 +1,4 @@
-/*
+﻿/*
 ===========================================================================
 
 Copyright (c) 2010-2015 Darkstar Dev Teams
@@ -54,7 +54,7 @@ void CMobController::Tick(time_point tick)
 
     m_Tick = tick;
 
-    if (PMob->isAlive())
+    if (PMob->isAlive() && !(PMob->m_Behaviour & BEHAVIOUR_NO_ACTION))
     {
         if (PMob->PAI->IsEngaged())
         {
@@ -118,7 +118,7 @@ bool CMobController::CanPursueTarget(CBattleEntity* PTarget)
 bool CMobController::CheckHide(CBattleEntity* PTarget)
 {
     TracyZoneScoped;
-    if (PTarget->GetMJob() == JOB_THF && PTarget->StatusEffectContainer->HasStatusEffect(EFFECT_HIDE))
+    if ((PTarget->GetMJob() == JOB_THF || (map_config.dual_main_job && (PTarget->GetSJob() == JOB_THF))) && PTarget->StatusEffectContainer->HasStatusEffect(EFFECT_HIDE))
     {
         return !CanPursueTarget(PTarget) && !PMob->m_TrueDetection;
     }
@@ -1159,6 +1159,12 @@ bool CMobController::CanAggroTarget(CBattleEntity* PTarget)
 
     // Don't aggro I'm special
     if (PMob->getMobMod(MOBMOD_NO_AGGRO) > 0)
+    {
+        return false;
+    }
+
+    // Don't aggro I was recently released by a BST with the Leave command
+    if (PMob->aggroTimer > (uint32)CVanaTime::getInstance()->getVanaTime())
     {
         return false;
     }

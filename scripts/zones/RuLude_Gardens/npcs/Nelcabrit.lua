@@ -59,5 +59,9 @@ function onEventFinish(player, csid, option)
         player:setCharVar("MissionStatus", 6)
     elseif csid == 36 then
         finishMissionTimeline(player, 3, csid, option)
+        if MAGICITE_GIVES_AKETON then
+            player:addItem(14428,1)
+            player:messageSpecial(ID.text.ITEM_OBTAINED,14428)
+        end
     end
 end

@@ -48,7 +48,7 @@ CInventorySizePacket::CInventorySizePacket(CCharEntity* PChar)
         ref<uint16>(0x1C) = 0x00;
     }
     GetSizeAndBuff(PChar, LOC_MOGSATCHEL, 0x09, 0x1E);
-    if (!(PChar->m_accountFeatures & 0x01)) {
+    if ((!map_config.storage_ignore_features) && (!(PChar->m_accountFeatures & 0x01))) {
         // Has no mog satchel access (greyed out)
         ref<uint8>(0x09) = 0x00;
         ref<uint16>(0x1E) = 0x00;
@@ -59,12 +59,12 @@ CInventorySizePacket::CInventorySizePacket(CCharEntity* PChar)
     GetSizeAndBuff(PChar, LOC_MOGSAFE2, 0x0D, 0x26);
     GetSizeAndBuff(PChar, LOC_WARDROBE2, 0x0E, 0x28);
     GetSizeAndBuff(PChar, LOC_WARDROBE3, 0x0F, 0x2A);
-    if (!(PChar->m_accountFeatures & 0x04)) {
+    if ((!map_config.storage_ignore_features) && (!(PChar->m_accountFeatures & 0x04))) {
         // Has no wardrobe 3 access (can still view)
         ref<uint16>(0x2A) = 0x00;
     }
     GetSizeAndBuff(PChar, LOC_WARDROBE4, 0x10, 0x2C);
-    if (!(PChar->m_accountFeatures & 0x08)) {
+    if ((!map_config.storage_ignore_features) && (!(PChar->m_accountFeatures & 0x08))) {
         // Has no wardrobe 4 access (can still view)
         ref<uint16>(0x2C) = 0x00;
     }

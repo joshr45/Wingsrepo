@@ -1551,14 +1551,14 @@ void CStatusEffectContainer::CheckEffectsExpiry(time_point tick)
     TPZ_DEBUG_BREAK_IF(m_POwner == nullptr);
     TracyZoneScoped;
 
-    for (CStatusEffect* PStatusEffect : m_StatusEffectSet)
-    {
-        if (PStatusEffect->GetDuration() != 0 &&
-            std::chrono::milliseconds(PStatusEffect->GetDuration()) + PStatusEffect->GetStartTime() <= tick)
+        for (CStatusEffect* PStatusEffect : m_StatusEffectSet)
         {
-            RemoveStatusEffect(PStatusEffect);
+            if (PStatusEffect->GetDuration() != 0 &&
+                std::chrono::milliseconds(PStatusEffect->GetDuration()) + PStatusEffect->GetStartTime() <= tick)
+            {
+                RemoveStatusEffect(PStatusEffect);
+            }
         }
-    }
     DeleteStatusEffects();
 }
 

@@ -22,6 +22,13 @@ function onTrigger(player, npc)
         13469, 1287,    -- Leather Ring
     }
 
+    if not player:isFishingEnabled() then
+        -- If fishing is not enabled then we need to add a way to obtain
+        -- a broken Mithran rod for the Opo-Opo crown quest.
+        table.insert(stock, 483)
+        table.insert(stock, 3251)
+    end
+
     player:showText(npc, ID.text.DROZGA_SHOP_DIALOG)
     tpz.shop.general(player, stock, WINDURST)
 end

@@ -38,6 +38,7 @@
 #include "../ability.h"
 #include "../alliance.h"
 #include "../battlefield.h"
+#include "../conquest_system.h"
 #include "../daily_system.h"
 #include "../enmity_container.h"
 #include "../guild.h"
@@ -120,11 +121,13 @@
 #include "../packets/guild_menu_buy.h"
 #include "../packets/independant_animation.h"
 #include "../packets/instance_entry.h"
+#include "../packets/inventory_assign.h"
 #include "../packets/inventory_finish.h"
 #include "../packets/inventory_modify.h"
 #include "../packets/inventory_size.h"
 #include "../packets/inventory_item.h"
 #include "../packets/key_items.h"
+#include "../packets/linkshell_equip.h"
 #include "../packets/menu_mog.h"
 #include "../packets/menu_merit.h"
 #include "../packets/menu_raisetractor.h"
@@ -158,6 +161,7 @@
 #include "../utils/trustutils.h"
 #include "../utils/zoneutils.h"
 #include "../utils/flistutils.h"
+#include "../utils/ahautils.h"
 
 #include "../packets/linkshell_concierge.h"
 #include "../linkshell.h"
@@ -329,8 +333,9 @@ inline int32 CLuaBaseEntity::PrintToPlayer(lua_State* L)
 
     CHAT_MESSAGE_TYPE messageType = (lua_isnil(L, 2) || !lua_isnumber(L, 2)) ? MESSAGE_SYSTEM_1 : (CHAT_MESSAGE_TYPE)lua_tointeger(L, 2);
     std::string name = (lua_isnil(L, 3) || !lua_isstring(L, 3)) ? std::string() : lua_tostring(L, 3);
+    int priority = lua_isnumber(L, 4) ? (int)lua_tointeger(L, 4) : 0xFF;
 
-    ((CCharEntity*)m_PBaseEntity)->pushPacket(new CChatMessagePacket((CCharEntity*)m_PBaseEntity, messageType, (char*)lua_tostring(L, 1), name));
+    ((CCharEntity*)m_PBaseEntity)->pushPacket(new CChatMessagePacket((CCharEntity*)m_PBaseEntity, messageType, (char*)lua_tostring(L, 1), name), priority);
     return 0;
 }
 
@@ -353,6 +358,8 @@ inline int32 CLuaBaseEntity::PrintToArea(lua_State* L)
     CHAT_MESSAGE_TYPE messageLook = (lua_isnil(L, 2) || !lua_isnumber(L, 2)) ? MESSAGE_SYSTEM_1 : (CHAT_MESSAGE_TYPE)lua_tointeger(L, 2);
     uint8 messageRange = (lua_isnil(L, 3) || !lua_isnumber(L, 3)) ? 0 : (CHAT_MESSAGE_TYPE)lua_tointeger(L, 3);
     std::string name = (lua_isnil(L, 4) || !lua_isstring(L, 4)) ? std::string() : lua_tostring(L, 4);
+    // TODO: Maybe add priority support for this (currently supported by neither zone->PushPacket not MQ send)
+    // int priority = lua_isnumber(L, 5) ? (int)lua_tointeger(L, 5) : 0xFF;
 
     if (messageRange == 0) // All zones world wide
     {
@@ -1431,6 +1438,34 @@ inline int32 CLuaBaseEntity::release(lua_State *L)
 }
 
 /************************************************************************
+*  Function: releaseStandard()
+*  Purpose : Ends an event for a PC; releases from cutscene
+*  Example : player:releaseStandard()
+*  Notes   :
+************************************************************************/
+
+inline int32 CLuaBaseEntity::releaseStandard(lua_State *L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_PC);
+
+    CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
+
+    RELEASE_TYPE releaseType = RELEASE_STANDARD;
+    /*
+    if (PChar->m_event.EventID != -1)
+    {
+    // Message: Event skipped
+    releaseType = RELEASE_SKIPPING;
+    PChar->pushPacket(new CMessageSystemPacket(0, 0, 117));
+    }
+    */
+    PChar->pushPacket(new CReleasePacket(PChar, releaseType));
+    PChar->pushPacket(new CReleasePacket(PChar, RELEASE_EVENT));
+    return 0;
+}
+
+/************************************************************************
 *  Function: setFlag()
 *  Purpose : Sets a flag for a PC
 *  Example : player:setFlag(FLAG_GM)
@@ -1507,6 +1542,36 @@ inline int32 CLuaBaseEntity::getID(lua_State *L)
     TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
 
     lua_pushinteger(L, m_PBaseEntity->id);
+    return 1;
+}
+
+/************************************************************************
+*  Function: getGroupID()
+*  Purpose : Get Entity's (mob's) group ID
+*  Example : npc:getGroupID(); target:getGroupID()
+*  Notes   :
+************************************************************************/
+
+inline int32 CLuaBaseEntity::getGroupID(lua_State *L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_MOB);
+
+    const char* Query = "SELECT groupid FROM mob_spawn_points WHERE mobid = %u;";
+
+    int32 ret = Sql_Query(SqlHandle, Query, (uint32)m_PBaseEntity->id);
+
+    if (ret == SQL_ERROR)
+    {
+        return 0;
+    }
+
+    if (Sql_NextRow(SqlHandle) != SQL_SUCCESS)
+    {
+        return 0;
+    }
+
+    lua_pushinteger(L, Sql_GetUIntData(SqlHandle, 0));
     return 1;
 }
 
@@ -4115,6 +4180,130 @@ inline int32 CLuaBaseEntity::addUsedItem(lua_State *L)
 }
 
 /************************************************************************
+*  Function: addLinkpearl()
+*  Purpose : Adds an linkpearl to a player's inventory
+*  Example : player:addLinkpearl(2) -- a pearl for a linkshell with ID 2
+************************************************************************/
+
+inline int32 CLuaBaseEntity::addLinkpearl(lua_State *L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_PC);
+
+    TPZ_DEBUG_BREAK_IF(lua_isnil(L, 1) || (!lua_isnumber(L, 1) && !lua_isstring(L, 1)));
+
+
+    uint16 shellID = 0;
+    if (lua_isnumber(L, 1)) {
+        shellID = (uint16)lua_tointeger(L, 1);
+    }
+    else {
+        const char* lsName = lua_tostring(L, 1);
+        shellID = linkshell::GetLinkshellId((const int8*)lsName);
+    }
+    if (shellID == 0) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+
+    CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
+    if (!PChar) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    CLinkshell* PLinkshell = linkshell::GetLinkshell(shellID);
+    if (!PLinkshell) {
+        PLinkshell = linkshell::LoadLinkshell(shellID);
+        if (!PLinkshell) {
+            lua_pushboolean(L, false);
+            return 1;
+        }
+    }
+    CItemLinkshell* PLinkpearl = linkshell::CreatePearl(PLinkshell);
+    if (!PLinkpearl) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    uint8 SlotID = charutils::AddItem(PChar, LOC_INVENTORY, PLinkpearl);
+    if (SlotID == 0) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    int8     DecodedName[21];
+    DecodeStringLinkshell(PLinkshell->getName(), DecodedName);
+    char extra[sizeof(PLinkpearl->m_extra) * 2 + 1];
+    Sql_EscapeStringLen(SqlHandle, extra, (const char*)PLinkpearl->m_extra, sizeof(PLinkpearl->m_extra));
+    const char* Query = "UPDATE char_inventory SET signature = '%s', extra = '%s', itemId = 515 WHERE charid = %u AND location = 0 AND slot = %u LIMIT 1";
+
+    if (Sql_Query(SqlHandle, Query, DecodedName, extra, PChar->id, SlotID) != SQL_ERROR &&
+        Sql_AffectedRows(SqlHandle) != 0)
+    {
+        PChar->pushPacket(new CInventoryItemPacket(PLinkpearl, LOC_INVENTORY, SlotID));
+    }
+
+    uint8 lsNum = 0;
+    if (lua_isnumber(L, 2)) {
+        lsNum = (uint8)lua_tointeger(L, 2);
+    }
+    if (lsNum == 1 || lsNum == 2) {
+
+        SLOTTYPE slot = SLOT_LINK1;
+        CLinkshell* OldLinkshell = PChar->PLinkshell1;
+        if (lsNum == 2)
+        {
+            slot = SLOT_LINK2;
+            OldLinkshell = PChar->PLinkshell2;
+        }
+
+        if (PLinkpearl->GetLSID() == 0) // linkshell no exists, item is unusable
+        {
+            PChar->pushPacket(new CMessageSystemPacket(0, 0, 110));
+            lua_pushboolean(L, false);
+            return 1;
+        }
+        if (OldLinkshell != nullptr) // switching linkshell group
+        {
+            CItemLinkshell* POldItemLinkshell = (CItemLinkshell*)PChar->getEquip(slot);
+
+            if (POldItemLinkshell != nullptr && POldItemLinkshell->isType(ITEM_LINKSHELL))
+            {
+                linkshell::DelOnlineMember(PChar, POldItemLinkshell);
+
+                POldItemLinkshell->setSubType(ITEM_UNLOCKED);
+                PChar->pushPacket(new CInventoryAssignPacket(POldItemLinkshell, INV_NORMAL));
+            }
+        }
+        linkshell::AddOnlineMember(PChar, PLinkpearl, lsNum);
+
+        PLinkpearl->setSubType(ITEM_LOCKED);
+
+        PChar->equip[slot] = SlotID;
+        PChar->equipLoc[slot] = LOC_INVENTORY;
+        if (lsNum == 1)
+        {
+            PChar->nameflags.flags |= FLAG_LINKSHELL;
+            PChar->updatemask |= UPDATE_HP;
+        }
+
+        PChar->pushPacket(new CInventoryAssignPacket(PLinkpearl, INV_LINKSHELL));
+
+        charutils::SaveCharStats(PChar);
+        charutils::SaveCharEquip(PChar);
+
+        PChar->pushPacket(new CLinkshellEquipPacket(PChar, lsNum));
+        PChar->pushPacket(new CInventoryItemPacket(PLinkpearl, LOC_INVENTORY, SlotID));
+
+        PLinkshell->PushLinkshellMessage(PChar, lsNum == 1);
+    }
+
+    PChar->pushPacket(new CInventoryFinishPacket());
+    PChar->pushPacket(new CCharUpdatePacket(PChar));
+
+    lua_pushboolean(L, true);
+    return 1;
+}
+
+/************************************************************************
 *  Function: hasWornItem()
 *  Purpose : Returns true if a player has a worn (unusable) item
 *  Example : if (player:hasWornItem(trade:getItemId())) then
@@ -4726,7 +4915,7 @@ int32 CLuaBaseEntity::setEquipBlock(lua_State* L)
     {
         auto PChar {static_cast<CCharEntity*>(m_PBaseEntity)};
         PChar->m_EquipBlock = (uint16)lua_tointeger(L, 1);
-        PChar->pushPacket(new CCharJobsPacket(PChar));
+        PChar->pushPacket(new CCharJobsPacket(PChar, true));
     }
     return 0;
 }
@@ -4756,7 +4945,7 @@ inline int32 CLuaBaseEntity::lockEquipSlot(lua_State *L)
     PChar->m_EquipBlock |= 1 << SLOT;
     PChar->pushPacket(new CCharAppearancePacket(PChar));
     PChar->pushPacket(new CEquipPacket(0, SLOT, LOC_INVENTORY));
-    PChar->pushPacket(new CCharJobsPacket(PChar));
+    PChar->pushPacket(new CCharJobsPacket(PChar, true));
     PChar->updatemask |= UPDATE_LOOK;
 
     return 0;
@@ -4783,7 +4972,7 @@ inline int32 CLuaBaseEntity::unlockEquipSlot(lua_State *L)
     CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
 
     PChar->m_EquipBlock &= ~(1 << SLOT);
-    PChar->pushPacket(new CCharJobsPacket(PChar));
+    PChar->pushPacket(new CCharJobsPacket(PChar, true));
 
     return 0;
 }
@@ -6112,8 +6301,8 @@ inline int32 CLuaBaseEntity::changeJob(lua_State *L)
         charutils::SaveCharExp(PChar, PChar->GetMJob());
         PChar->updatemask |= UPDATE_HP;
 
-        PChar->pushPacket(new CCharJobsPacket(PChar));
-        PChar->pushPacket(new CCharStatsPacket(PChar));
+        PChar->pushPacket(new CCharJobsPacket(PChar, true));
+        PChar->pushPacket(new CCharStatsPacket(PChar, true));
         PChar->pushPacket(new CCharSkillsPacket(PChar));
         PChar->pushPacket(new CCharRecastPacket(PChar));
         PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -6158,6 +6347,7 @@ inline int32 CLuaBaseEntity::changesJob(lua_State *L)
             blueutils::UnequipAllBlueSpells(PChar);
         }
         puppetutils::LoadAutomaton(PChar);
+        charutils::CheckValidEquipment(PChar);
     }
 
     return 0;
@@ -6189,7 +6379,7 @@ inline int32 CLuaBaseEntity::unlockJob(lua_State *L)
         if (PChar->jobs.job[JobID] == 0) PChar->jobs.job[JobID] = 1;
 
         charutils::SaveCharJob(PChar, JobID);
-        PChar->pushPacket(new CCharJobsPacket(PChar));
+        PChar->pushPacket(new CCharJobsPacket(PChar, true));
     }
     return 0;
 }
@@ -6335,8 +6525,8 @@ inline int32 CLuaBaseEntity::setLevel(lua_State *L)
     charutils::SaveCharExp(PChar, PChar->GetMJob());
     PChar->updatemask |= UPDATE_HP;
 
-    PChar->pushPacket(new CCharJobsPacket(PChar));
-    PChar->pushPacket(new CCharStatsPacket(PChar));
+    PChar->pushPacket(new CCharJobsPacket(PChar, true));
+    PChar->pushPacket(new CCharStatsPacket(PChar, true));
     PChar->pushPacket(new CCharSkillsPacket(PChar));
     PChar->pushPacket(new CCharRecastPacket(PChar));
     PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -6396,8 +6586,8 @@ inline int32 CLuaBaseEntity::setsLevel(lua_State *L)
     charutils::SaveCharJob(PChar, PChar->GetSJob());
     charutils::SaveCharExp(PChar, PChar->GetMJob());
 
-    PChar->pushPacket(new CCharJobsPacket(PChar));
-    PChar->pushPacket(new CCharStatsPacket(PChar));
+    PChar->pushPacket(new CCharJobsPacket(PChar, true));
+    PChar->pushPacket(new CCharStatsPacket(PChar, true));
     PChar->pushPacket(new CCharSkillsPacket(PChar));
     PChar->pushPacket(new CCharRecastPacket(PChar));
     PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -6482,8 +6672,8 @@ inline int32 CLuaBaseEntity::levelRestriction(lua_State* L)
                 charutils::BuildingCharTraitsTable(PChar);
                 charutils::BuildingCharAbilityTable(PChar);
                 charutils::CheckValidEquipment(PChar);
-                PChar->pushPacket(new CCharJobsPacket(PChar));
-                PChar->pushPacket(new CCharStatsPacket(PChar));
+                PChar->pushPacket(new CCharJobsPacket(PChar, true));
+                PChar->pushPacket(new CCharStatsPacket(PChar, true));
                 PChar->pushPacket(new CCharSkillsPacket(PChar));
                 PChar->pushPacket(new CCharRecastPacket(PChar));
                 PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -6588,7 +6778,7 @@ inline int CLuaBaseEntity::addTitle(lua_State *L)
     uint16 TitleID = (uint16)lua_tointeger(L, 1);
 
     PChar->profile.title = TitleID;
-    PChar->pushPacket(new CCharStatsPacket(PChar));
+    PChar->pushPacket(new CCharStatsPacket(PChar, true));
 
     charutils::addTitle(PChar, TitleID);
     charutils::SaveTitles(PChar);
@@ -6642,7 +6832,7 @@ inline int32 CLuaBaseEntity::delTitle(lua_State *L)
         {
             PChar->profile.title = 0;
         }
-        PChar->pushPacket(new CCharStatsPacket(PChar));
+        PChar->pushPacket(new CCharStatsPacket(PChar, true));
 
         charutils::SaveTitles(PChar);
     }
@@ -9912,19 +10102,28 @@ inline int32 CLuaBaseEntity::hasPartyJob(lua_State *L)
         for (uint32 i = 0; i < ((CCharEntity*)m_PBaseEntity)->PParty->members.size(); i++)
         {
             CCharEntity* PTarget = (CCharEntity*)((CCharEntity*)m_PBaseEntity)->PParty->members[i];
-            if (PTarget->GetMJob() == job)
+            if ((PTarget->GetMJob() == job) || (map_config.dual_main_job && (PTarget->GetSJob() == job)))
             {
                 lua_pushboolean(L, true);
                 return 1;
             }
             for (auto PTrust : PTarget->PTrusts)
             {
-                if (PTrust->GetMJob() == job)
+                if ((PTrust->GetMJob() == job) || (map_config.dual_main_job && (PTrust->GetSJob() == job)))
                 {
                     lua_pushboolean(L, true);
                     return 1;
                 }
             }
+        }
+    }
+    else
+    {
+        CCharEntity* self = (CCharEntity*)m_PBaseEntity;
+        if (self->GetMJob() == job || (map_config.dual_main_job && (self->GetSJob() == job)))
+        {
+            lua_pushboolean(L, true);
+            return 1;
         }
     }
     lua_pushboolean(L, false);
@@ -10776,7 +10975,8 @@ inline int32 CLuaBaseEntity::sendRaise(lua_State *L)
 
     uint8 RaiseLevel = (uint8)lua_tonumber(L, 1);
 
-    if (RaiseLevel == 0 || RaiseLevel > 5)
+    //if (RaiseLevel == 0 || RaiseLevel > 5)
+    if (!((RaiseLevel > 0 && (RaiseLevel <= 5)) || (RaiseLevel > 10 && (RaiseLevel <= 15))))
     {
         ShowDebug(CL_CYAN"lua::sendRaise raise value is not valid!\n" CL_RESET);
     }
@@ -10806,7 +11006,7 @@ inline int32 CLuaBaseEntity::sendReraise(lua_State *L)
 
     uint8 RaiseLevel = (uint8)lua_tonumber(L, 1);
 
-    if (RaiseLevel == 0 || RaiseLevel > 3)
+    if (!((RaiseLevel > 0 && (RaiseLevel <= 5)) || (RaiseLevel > 10 && (RaiseLevel <= 15))))
     {
         ShowDebug(CL_CYAN"lua::sendRaise raise value is not valide!\n" CL_RESET);
     }
@@ -11368,8 +11568,8 @@ int32 CLuaBaseEntity::recalculateStats(lua_State* L)
 
         PChar->UpdateHealth();
 
-        PChar->pushPacket(new CCharJobsPacket(PChar));
-        PChar->pushPacket(new CCharStatsPacket(PChar));
+        PChar->pushPacket(new CCharJobsPacket(PChar, true));
+        PChar->pushPacket(new CCharStatsPacket(PChar, false));
         PChar->pushPacket(new CCharSkillsPacket(PChar));
         PChar->pushPacket(new CCharRecastPacket(PChar));
         PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -12553,7 +12753,7 @@ inline int32 CLuaBaseEntity::addCorsairRoll(lua_State *L)
         (n >= 8 ? (uint16)lua_tointeger(L, 8) : 0),  // SubPower or 0
         (n >= 9 ? (uint16)lua_tointeger(L, 9) : 0)); // Tier or 0
     uint8 maxRolls = 2;
-    if (casterJob != JOB_COR)
+    if ((casterJob != JOB_COR) || (map_config.dual_main_job))
     {
         maxRolls = 1;
     }
@@ -12697,7 +12897,9 @@ inline int32 CLuaBaseEntity::charm(lua_State* L)
     TPZ_DEBUG_BREAK_IF(lua_isnil(L, 1) || !lua_isuserdata(L, 1));
 
     CLuaBaseEntity* PTarget = Lunar<CLuaBaseEntity>::check(L, 1);
-    battleutils::applyCharm((CBattleEntity*)m_PBaseEntity, (CBattleEntity*)PTarget->GetBaseEntity());
+    if ((CBattleEntity*)m_PBaseEntity && PTarget && (CBattleEntity*)PTarget->GetBaseEntity()) {
+        battleutils::applyCharm((CBattleEntity*)m_PBaseEntity, (CBattleEntity*)PTarget->GetBaseEntity());
+    }
 
     return 0;
 }
@@ -12758,7 +12960,7 @@ int32 CLuaBaseEntity::setStatDebilitation(lua_State* L)
     {
         auto PChar {static_cast<CCharEntity*>(m_PBaseEntity)};
         PChar->m_StatsDebilitation = (uint16)lua_tointeger(L, 1);
-        PChar->pushPacket(new CCharJobsPacket(PChar));
+        PChar->pushPacket(new CCharJobsPacket(PChar, true));
     }
     return 0;
 }
@@ -16009,6 +16211,460 @@ inline int32 CLuaBaseEntity::getTHlevel(lua_State* L)
 }
 
 /************************************************************************
+*  Function: flip()
+*  Purpose : allows use of equipment from subjob... workaround on client-side
+*  Example : !flip
+*  Notes   : also used for !dw to allow dual wielding
+************************************************************************/
+
+inline int32 CLuaBaseEntity::flip(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
+    TPZ_DEBUG_BREAK_IF(!lua_isnumber(L, 1));
+
+    if (!map_config.dual_main_job && !map_config.all_jobs_dual_wield) {
+        return 0;
+    }
+
+    int32 arg = (int32)lua_tointeger(L, 1);
+    bool dw = false;
+    if (arg == 18)
+    {
+        dw = true;
+        if (!map_config.all_jobs_dual_wield) {
+            return 0;
+        }
+    }
+    else {
+        if (!map_config.dual_main_job) {
+            return 0;
+        }
+    }
+
+    uint8 flipstate = (uint8)charutils::GetCharVar(PChar, "JobFlipState");
+
+    if (dw == false) // we aren't doing DW workaround
+    {
+
+        if (flipstate == 0) // not flipped
+        {
+            flipstate = 1; // let's flip
+            PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, "Flip enabled. You may now equip items allowed by your sub job.", "Server"));
+        }
+
+        else if (flipstate == 1) // flipped
+        {
+            flipstate = 0; // let's unflip
+            PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, "Flip disabled. You may now equip items allowed by your main job.", "Server"));
+        }
+
+        else if (flipstate == 2) // dw workaround
+        {
+            flipstate = 3; // let's flip with dw workaround still enabled
+            PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, "Flip enabled. You may now equip items allowed by your sub job.", "Server"));
+        }
+
+        else if (flipstate == 3) // dw workaround while flipped
+        {
+            flipstate = 2; // let's unflip but leave dw up
+            PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, "Flip disabled. You may now equip items allowed by your main job.", "Server"));
+        }
+
+    }
+
+    if (dw == true) // we ARE doing DW workaround
+    {
+
+        if (flipstate == 0) // not flipped
+        {
+            flipstate = 2; // let's set DWWA
+            PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, "Subjob has been ghosted to be NIN to allow dual wielding.", "Server"));
+        }
+
+        else if (flipstate == 1) // flipped
+        {
+            flipstate = 3; // let's set DWWA and keep flip on
+            PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, "Subjob has been ghosted to be NIN to allow dual wielding.", "Server"));
+        }
+
+        else if (flipstate == 2) // dw workaround
+        {
+            flipstate = 0; // let's undo DWWA
+            PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, "Dual wield disabled. Your jobs have been reset to normal state.", "Server"));
+        }
+
+        else if (flipstate == 3) // dw workaround with flip enabled
+        {
+            flipstate = 1; // let's undo DWWA but keep flip on
+            PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, "Dual wield disabled. Your jobs have been reset to normal state.", "Server"));
+        }
+
+    }
+
+    charutils::SetCharVar(PChar, "JobFlipState", flipstate);
+    PChar->pushPacket(new CCharStatsPacket(PChar, false));
+
+    return 1;
+}
+
+/************************************************************************
+*  Function: checkVersionMismatch()
+*  Purpose : Checks for a client version mismatch
+*  Example : player:checkVersionMismatch()
+*  Notes   : no args
+************************************************************************/
+
+inline int32 CLuaBaseEntity::checkVersionMismatch(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
+
+    lua_pushboolean(L, PChar->m_clientVerMismatch);
+    return 1;
+}
+
+inline int32 CLuaBaseEntity::getInfluenceMult(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
+
+    std::string line;
+    if (map_config.enable_tonberry_xp_buffs) {
+        lua_pushnumber(L, conquest::GetInfluenceMultiplier(PChar));
+    }
+    else {
+        lua_pushnumber(L, 0);
+    }
+
+    return 1;
+}
+
+
+/************************************************************************
+*  Function: ahaMain()
+*  Purpose : where it begins
+*  Example : !aha ... player:ahaMain(arg1,arg2)
+*  Notes   : requires ahautils.h
+************************************************************************/
+
+inline int32 CLuaBaseEntity::ahaMain(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
+
+    TPZ_DEBUG_BREAK_IF(!lua_isstring(L, 1));
+    TPZ_DEBUG_BREAK_IF(!lua_isstring(L, 2));
+    std::string arg1 = lua_tostring(L, 1);
+    std::string arg2 = lua_tostring(L, 2);
+    std::string line;
+
+    if (arg1 != FLNULL) // lowercase
+    {
+        std::transform(arg1.begin(), arg1.end(), arg1.begin(), ::tolower);
+    }
+
+    if (arg2 != FLNULL) // lowercase
+    {
+        std::transform(arg2.begin(), arg2.end(), arg2.begin(), ::tolower);
+    }
+
+    uint8 c;
+
+    c = 0;
+    while (arg1[c] != '\0' && c != 16) { c++; } // count string length
+    if (c == 16) { arg1[c] = '\0'; } // if 17 or more, truncate
+
+    c = 0;
+    while (arg2[c] != '\0' && c != 16) { c++; } // count string length
+    if (c == 16) { arg2[c] = '\0'; } // if 17 or more, truncate
+
+    ahaInitialize(PChar);
+
+    uint8 sSort = ahaGetSort(PChar);
+    uint8 sChannel = ahaGetChannel(PChar);
+
+    if (!ahaIsInAuctionArea(PChar))
+    {
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE (ERROR) ==", ""));
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "AH Assist functionality is only available while", ""));
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "near an Auction House.", ""));
+        return 0;
+    }
+
+    if (arg1 == "sort" || arg1 == "order")
+    {
+        if (arg2 == "time" || arg2 == "default")
+        {
+            ahaSetSort(PChar, 1, sChannel);
+            return 0;
+        }
+        if (arg2 == "timerev")
+        {
+            ahaSetSort(PChar, 2, sChannel);
+            return 0;
+        }
+        if (arg2 == "price")
+        {
+            ahaSetSort(PChar, 3, sChannel);
+            return 0;
+        }
+        if (arg2 == "pricerev")
+        {
+            ahaSetSort(PChar, 4, sChannel);
+            return 0;
+        }
+        if (arg2 == "name")
+        {
+            ahaSetSort(PChar, 5, sChannel);
+            return 0;
+        }
+        if (arg2 == "namerev")
+        {
+            ahaSetSort(PChar, 6, sChannel);
+            return 0;
+        }
+        if (arg2 == FLNULL)
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE (ERROR) ==", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "You must specify a sort type!", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "Use '!aha help sort' for more info.", ""));
+            return 0;
+        }
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE (ERROR) ==", ""));
+        line = "Unrecognized sort type: ";
+        line += arg2;
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, line, ""));
+        return 0;
+    }
+
+    if (arg1 == "channel")
+    {
+        uint8 channel = 29;
+        if (arg2 == "say")
+        {
+            channel = 13;
+            ahaSetChannel(PChar, channel);
+            return 0;
+        }
+        if (arg2 == "shout")
+        {
+            channel = 14;
+            ahaSetChannel(PChar, channel);
+            return 0;
+        }
+        if (arg2 == "party" || arg2 == "alliance")
+        {
+            channel = 15;
+            ahaSetChannel(PChar, channel);
+            return 0;
+        }
+        if (arg2 == "linkshell" || arg2 == "linkshell1" || arg2 == "ls" || arg2 == "ls1")
+        {
+            channel = 16;
+            ahaSetChannel(PChar, channel);
+            return 0;
+        }
+        if (arg2 == "linkshell2" || arg2 == "ls2")
+        {
+            channel = 28;
+            ahaSetChannel(PChar, channel);
+            return 0;
+        }
+        if (arg2 == "default" || arg2 == "system" || arg2 == "sys")
+        {
+            channel = 29;
+            ahaSetChannel(PChar, channel);
+            return 0;
+        }
+        if (arg2 == FLNULL)
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE (ERROR) ==", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "You must specify a channel identifier!", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "Use '!aha help channel' for more info.", ""));
+            return 0;
+        }
+
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE (ERROR) ==", ""));
+        line = "Unrecognized channel: " + arg2;
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, line, ""));
+
+        return 0;
+    }
+
+    if (arg1 == "expire" || arg1 == "unlist" || arg1 == "remove")
+    {
+        if (arg2 == FLNULL)
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE (ERROR) ==", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "You must specify a listing ID to expire!", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "Use '!aha help expire' for more info.", ""));
+        }
+        uint32 seconds = ahaArgIsTime(PChar, sChannel, arg2);
+        if (seconds == 7) { return 0; } // we already gave out error msg
+        if (seconds > 0)
+        {
+            ahaExpireByTime(PChar, sChannel, seconds, arg2);
+            return 0;
+        }
+        else if (ahaArgIsNumberSpecial(arg2))
+        {
+            uint32 ahid = ahaFormatNumber(arg2);
+            ahaExpireByID(PChar, sChannel, ahid);
+            return 0;
+        }
+        else
+        {
+            ahaExpireByKeyword(PChar, sChannel, arg2);
+            return 0;
+        }
+    }
+
+    if (arg1 == "help")
+    {
+        if (arg2 == FLNULL)
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE ==", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "{ Help Index }", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  !aha help query", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  !aha help sort", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  !aha help channel", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  !aha help expire", ""));
+            return 1;
+        }
+        if (arg2 == "query")
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE ==", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "'!aha' can be used alone to display all of your listings.", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "You can optionally specify a keyword to search through", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "your listings to narrow the results, ex '!aha beeswax'.", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "If your query has multiple pages you can see a page", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "number using '!aha #' ex '!aha 3' for page 3.", ""));
+            return 1;
+        }
+        if (arg2 == "sort" || arg2 == "order")
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE ==", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "'!aha sort [type]' sets your sort preference. Valid types:", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  TIME", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  TIMEREV", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  NAME", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  NAMEREV", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  PRICE", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  PRICEREV", ""));
+            return 1;
+        }
+        if (arg2 == "channel")
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE ==", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "'!aha channel [id]' Sets the chat channel for all AH ASSIST MESSAGES.", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "This only affects how your client displays them. Valid channels:", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  SAY", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  SHOUT", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  PARTY", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  LS1", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  LS2", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "  SYSTEM", ""));
+            return 1;
+        }
+        if (arg2 == "expire" || arg2 == "unlist" || arg2 == "remove")
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE ==", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "'!aha expire [arg]' will expire one or more of your current AH", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "listings. The [arg] can be either the listing's ID number found", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "at the end of the listing or it can be a keyword to expire all", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "items with that keyword or it can be an age, expiring all items.", ""));
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "older than that (must be in the form '10m', '12h', '30d', etc).", ""));
+            return 1;
+        }
+
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "== AH ASSIST MESSAGE (ERROR) ==", ""));
+        line = "Help section not recognized: " + arg2;
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, line, ""));
+        return 1;
+    }
+
+    uint16 page = 1;
+
+    // no arg1 or arg1 is a number ... arg2 becomes search term if exists
+    if (arg1 == FLNULL || ahaArgIsNumber(arg1))
+    {
+        if (arg1 != FLNULL && ahaArgIsNumber(arg1)) { page = std::stoi(arg1); }
+        if (arg2 == FLNULL) { arg2 = ""; }
+        ahaLoadList(PChar, sChannel, page, arg2, sSort);
+        return 0;
+    }
+
+    // arg1 is not a number ... arg1 becomes search term, arg2 becomes page number
+    if (arg2 != FLNULL && ahaArgIsNumber(arg2)) { page = std::stoi(arg2); }
+    ahaLoadList(PChar, sChannel, page, arg1, sSort);
+
+    return 0;
+
+}
+
+inline int32 CLuaBaseEntity::isWeekendEvent(lua_State* L) // for explorer moogles
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
+
+    bool wevent = false;
+    if (map_config.enable_tonberry_weekend) {
+        wevent = map_config.weekendEvent;
+        if (!wevent)
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_1, "Explorer Moogles are active for nation teleportation during the Tonberry Sunday Seeding Event every Sun 2pm EST until Mon 2am EST."));
+        }
+    }
+    //ShowDebug("pushing integer to Lua: %u\n", wevent);
+    lua_pushboolean(L, wevent);
+
+    return 1;
+}
+
+/************************************************************************
+*  Function: checkOdo()
+*  Purpose : to spawn Odontotyrannus if the conditions are met
+*  Example : odonto:checkOdo()
+*  Notes   : for A Boy's Dream in Castle O if fishing is disabled
+************************************************************************/
+
+inline int32 CLuaBaseEntity::checkOdo(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+
+    CMobEntity* Odonto = (CMobEntity*)m_PBaseEntity;
+
+    if (!map_config.disable_fishing) {
+        // If fishing is enabled then the player needs to fish it themselves
+        return 0;
+    }
+
+    int32 ret = Sql_Query(SqlHandle, "SELECT charid FROM accounts_sessions;");
+    CCharEntity* PChar;
+    if (ret != SQL_ERROR)
+    {
+        while (Sql_NextRow(SqlHandle) == SQL_SUCCESS)
+        {
+            PChar = zoneutils::GetChar(Sql_GetUIntData(SqlHandle, 0));
+            if (PChar == nullptr) { continue; }
+            if (PChar->loc.zone->GetID() != ZONE_CASTLE_OZTROJA) { continue; }
+            if (PChar->getStorage(LOC_INVENTORY)->SearchItem(17001) == ERROR_SLOTID) { continue; }
+            float x = PChar->loc.p.x;
+            float y = PChar->loc.p.y;
+            float z = PChar->loc.p.z;
+            if (x > -109.0f && x < -50.8f && y > 14.0f && y < 34.0f && z < -10.7f && z > -69.0f)
+            {
+                Odonto->Spawn();
+                break;
+            }
+        }
+    }
+    return 0;
+
+}
+
+/************************************************************************
 *  Function: friendListMain()
 *  Purpose : where it begins
 *  Example : !flist ... player:friendListMain(arg1,arg2,arg3)
@@ -16473,6 +17129,283 @@ inline int32 CLuaBaseEntity::friendListMain(lua_State* L)
     PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)sChannel, "Use '!flist help' for a list of commands.", ""), -1);
     return 2;
 
+}
+
+/************************************************************************
+*  Function: getAggro()
+*  Purpose : true if aggressive, false if not
+*  Example : mob:getAggro()
+*  Notes   :
+************************************************************************/
+
+inline int32 CLuaBaseEntity::getAggro(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_MOB);
+
+    lua_pushboolean(L, ((CMobEntity*)m_PBaseEntity)->m_Aggro);
+
+    return 1;
+}
+
+/************************************************************************
+*  Function: getLink()
+*  Purpose : true if links, false if not
+*  Example : mob:getLink()
+*  Notes   : 
+************************************************************************/
+
+inline int32 CLuaBaseEntity::getLink(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_MOB);
+
+    lua_pushboolean(L, ((CMobEntity*)m_PBaseEntity)->m_Link);
+
+    return 1;
+}
+
+/************************************************************************
+*  Function: getDetectionType(type)
+*  Purpose : if aggressive/links, gives detection type as boolean
+*  Example : mob:getDetectionType(1)
+*  Notes   : 
+************************************************************************/
+
+inline int32 CLuaBaseEntity::getDetectionType(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_MOB);
+    TPZ_DEBUG_BREAK_IF(lua_isnil(L, 1) || !lua_isnumber(L, 1));
+
+    /*  DETECT_SIGHT = 0x01,
+    DETECT_HEARING = 0x02,
+    DETECT_LOWHP = 0x04,
+    DETECT_MAGIC = 0x20,
+    DETECT_WEAPONSKILL = 0x40,
+    DETECT_JOBABILITY = 0x80,
+    DETECT_SCENT = 0x100*/
+    DETECT detectType = (DETECT)lua_tointeger(L, 1);
+
+    if (detectType == 0x01 || detectType == 0x02 || detectType == 0x04 || detectType == 0x20 || detectType == 0x40 || detectType == 0x80 || detectType == 0x80 || detectType == 0x100)
+    {
+        lua_pushboolean(L, ((CMobEntity*)m_PBaseEntity)->m_Detects & detectType);
+        return 1;
+    }
+
+    lua_pushboolean(L, false);
+    return 1;
+}
+
+/************************************************************************
+*  Function: setPVP(team)
+*  Purpose : 
+*  Example : player:setPVP(5)
+*  Notes   :
+************************************************************************/
+
+inline int32 CLuaBaseEntity::setPVP(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_PC);
+    TPZ_DEBUG_BREAK_IF(lua_isnil(L, 1) || !lua_isnumber(L, 1));
+    TPZ_DEBUG_BREAK_IF(lua_isnil(L, 1) || !lua_isnumber(L, 2));
+
+    CCharEntity* PChar = (CCharEntity*)m_PBaseEntity;
+    if (!map_config.enable_duel_pvp) {
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "PvP is not enabled on this server.", ""));
+        return 0;
+    }
+    if (PChar->StatusEffectContainer->HasStatusEffect({ EFFECT_LEVEL_RESTRICTION, EFFECT_LEVEL_SYNC }) && PChar->m_pvpSync == 0) // level synced and it's not from duel mode!
+    {
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "You cannot use the duel function while in a party with level sync enabled.", ""));
+        return 0;
+    }
+    if (PChar->PNotorietyContainer && PChar->PNotorietyContainer->hasEnmity()) {
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "You cannot use the duel function when under attack by a monster.", ""));
+        return 0;
+    }
+    if ((uint32)CVanaTime::getInstance()->getVanaTime() - PChar->lastZoneTimer < 13 || PChar->StatusEffectContainer->HasStatusEffect(EFFECT_WEAKNESS)) // 13 seconds or is weakened
+    {
+        PChar->pushPacket(new CMessageStandardPacket(PChar, 0, MsgStd::WaitLonger)); // you must wait longer to perform that action
+        return 0;
+    }
+
+
+    bool inCityZone = false;
+    bool didReSync = false;
+    bool isCurrPVP = (PChar->allegiance != ALLEGIANCE_PLAYER);
+    ALLEGIANCETYPE newteam = (ALLEGIANCETYPE)lua_tointeger(L, 1);
+    uint8 sync = (uint8)lua_tointeger(L, 2);
+    if (newteam != ALLEGIANCE_GRIFFONS && newteam != ALLEGIANCE_WYVERNS && newteam != ALLEGIANCE_FFA && newteam != ALLEGIANCE_PLAYER) {
+        PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "You must specify a mode with '!duel green', '!duel blue' or '!duel ffa' to enter duel mode.", ""));
+        return 0;
+    }
+
+    if (PChar->loc.zone && PChar->loc.zone->GetType() == ZONETYPE_CITY) {
+        inCityZone = true;
+    }
+
+    PChar->updatemask |= UPDATE_HP;
+    if (PChar->PPet)
+        PChar->PPet->updatemask |= UPDATE_HP;
+
+    if (sync)
+    {
+        if (!inCityZone)
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "You cannot use duel sync outside of towns or cities.", ""));
+            return 0;
+        }
+        if (sync >= PChar->jobs.job[PChar->GetMJob()])
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "You must specify a level less than your current main job level for duel sync.", ""));
+            return 0;
+        }
+        else
+        {
+            PChar->StatusEffectContainer->DelStatusEffect(EFFECT_LEVEL_SYNC);
+            PChar->StatusEffectContainer->AddStatusEffect(new CStatusEffect(EFFECT_LEVEL_SYNC, EFFECT_LEVEL_SYNC, sync, 0, 0), true);
+            PChar->m_pvpSync = sync;
+
+            if (newteam == PChar->allegiance)
+                didReSync = true;
+
+        }
+    }
+    else // remove duel sync if we have it on
+    {
+        if (PChar->StatusEffectContainer->HasStatusEffect(EFFECT_LEVEL_SYNC) && PChar->m_pvpSync != 0) // level synced and IT IS from duel mode
+        {
+            PChar->StatusEffectContainer->DelStatusEffect(EFFECT_LEVEL_SYNC);
+            PChar->m_pvpSync = 0;
+            if (newteam == PChar->allegiance)
+            {
+                didReSync = true;
+            }
+        }
+    }
+
+    if (!didReSync)
+    {
+        if (newteam == PChar->allegiance || newteam == ALLEGIANCE_FFA || newteam == ALLEGIANCE_PLAYER) // toggle off
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "Duel mode has been disabled.", ""));
+            PChar->allegiance = ALLEGIANCE_PLAYER;
+            PChar->m_isPvp = false;
+            PChar->m_pvpSync = 0;
+
+        }
+        else if (newteam == ALLEGIANCE_GRIFFONS || newteam == ALLEGIANCE_WYVERNS || newteam == ALLEGIANCE_FFA || newteam == ALLEGIANCE_PLAYER) // switch teams, non-tourney pvp
+        {
+
+            if (newteam == ALLEGIANCE_WYVERNS) {
+                PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "Duel mode has been enabled under team blue.", ""));
+            }
+            else if (newteam == ALLEGIANCE_GRIFFONS) {
+                PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "Duel mode has been enabled under team green.", ""));
+            }
+            else if (newteam == ALLEGIANCE_FFA) {
+                PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "Duel mode has been enabled in FFA mode.", ""));
+            }
+            else if (newteam == ALLEGIANCE_PLAYER) {
+                PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "Duel mode has been disabled.", ""));
+            }
+
+            if (!inCityZone)
+            {
+                PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "WARNING! Losing duels outside of towns or cities will result in EXP loss!", ""));
+            }
+
+            PChar->m_isPvp = (newteam != ALLEGIANCE_PLAYER);
+            PChar->allegiance = newteam;
+        }
+    }
+
+    if (inCityZone) {
+        PChar->StatusEffectContainer->DelStatusEffectsByFlag(EFFECTFLAG_DISPELABLE | EFFECTFLAG_ON_ZONE);
+    }
+
+    return 0;
+}
+
+/************************************************************************
+*  Function: isPVP()
+*  Purpose : returns true if a player is in the pvp state. used for removing level correction for hitrates
+*  Example : player:isPVP()
+*  Notes   : has a built in check for if the player is pc. always returns false on mobs. no need to combine with attacker:isPC()
+also has a check if it is a player's pet
+************************************************************************/
+
+inline int32 CLuaBaseEntity::isPVP(lua_State* L)
+{
+    TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+
+    bool condition = false;
+
+    if (m_PBaseEntity->objtype == TYPE_PC && ((CCharEntity*)m_PBaseEntity)->m_isPvp)
+        condition = true;
+    else if (m_PBaseEntity->objtype == TYPE_PET && ((CBattleEntity*)m_PBaseEntity)->PMaster->objtype == TYPE_PC && ((CCharEntity*)(((CBattleEntity*)m_PBaseEntity)->PMaster))->m_isPvp)
+        condition = true;
+
+    lua_pushboolean(L, condition);
+
+    return 1;
+}
+
+/************************************************************************
+*  Function: isCustomizationEnabled()
+*  Purpose : Checks if a certain server customization has been enabled
+*  Example : player:isCustomizationEnabled(1)
+************************************************************************/
+
+inline int32 CLuaBaseEntity::isCustomizationEnabled(lua_State* L)
+{
+    // TPZ_DEBUG_BREAK_IF(m_PBaseEntity == nullptr);
+    TPZ_DEBUG_BREAK_IF(lua_isnil(L, 1) || !lua_isnumber(L, 1));
+
+    uint32 customization = lua_tointeger(L, 1);
+
+    bool enabled = false;
+
+    switch (customization) {
+    case 0:
+        // Stub
+        enabled = false;
+        break;
+    case 1:
+        // Tonberry flip
+        enabled = map_config.dual_main_job;
+        break;
+    case 2:
+        // Tonberry dual wield
+        enabled = map_config.all_jobs_dual_wield;
+        break;
+    case 3:
+        // Tonberry PvP
+        enabled = map_config.enable_duel_pvp;
+        break;
+    case 4:
+        // Weekend event
+        // Note: Reports whether it's enabled in the configuration,
+        // not whether it's actually active at the moment.
+        enabled = map_config.enable_tonberry_weekend;
+        break;
+    case 5:
+        // 2x 1.5x Custom XP boost
+        enabled = map_config.enable_tonberry_xp_buffs;
+        break;
+    case 6:
+        // Auction house helper
+        enabled = map_config.enable_aha;
+        break;
+    default:
+        enabled = false;
+    }
+
+    lua_pushboolean(L, enabled);
+
+    return 1;
 }
 
 /************************************************************************
@@ -17068,6 +18001,18 @@ inline int32 CLuaBaseEntity::sendHelpDeskMsg(lua_State* L)
     Sql_Query(SqlHandle, updateStatusQueryFmt, mincallid);
 
     return 0;
+}
+
+/************************************************************************
+*  Function: isFishingEnabled()
+*  Purpose : Returns true if fishing is enabled on this server
+*  Example : player:isFishingEnabled()
+*  Notes   :
+************************************************************************/
+inline int32 CLuaBaseEntity::isFishingEnabled(lua_State* L)
+{
+    lua_pushboolean(L, map_config.disable_fishing ? 0 : 1);
+    return 1;
 }
 
 /************************************************************************
@@ -18077,6 +19022,7 @@ Lunar<CLuaBaseEntity>::Register_t CLuaBaseEntity::methods[] =
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,updateEventString),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,getEventTarget),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,release),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,releaseStandard),
 
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,setFlag),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,moghouseFlag),
@@ -18084,6 +19030,7 @@ Lunar<CLuaBaseEntity>::Register_t CLuaBaseEntity::methods[] =
 
     // Object Identification
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,getID),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,getGroupID),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,getShortID),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,getCursorTarget),
 
@@ -18183,6 +19130,7 @@ Lunar<CLuaBaseEntity>::Register_t CLuaBaseEntity::methods[] =
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,delItem),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,addUsedItem),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,addTempItem),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,addLinkpearl),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,hasWornItem),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,createWornItem),
 
@@ -18759,6 +19707,7 @@ Lunar<CLuaBaseEntity>::Register_t CLuaBaseEntity::methods[] =
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,delRoamFlag),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,deaggroPlayer),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,deaggroAll),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,isFishingEnabled),
 
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,sendHelpDeskMsg),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity,closeTicket),
@@ -18785,6 +19734,19 @@ Lunar<CLuaBaseEntity>::Register_t CLuaBaseEntity::methods[] =
     LUNAR_DECLARE_METHOD(CLuaBaseEntity, lsConciergeUpdate),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity, lsConciergeRegister),
     LUNAR_DECLARE_METHOD(CLuaBaseEntity, lsConciergeCancel),
+
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,flip),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,checkVersionMismatch),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,getInfluenceMult),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,ahaMain),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,isWeekendEvent),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,checkOdo),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,getAggro),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,getLink),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,getDetectionType),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,setPVP),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,isPVP),
+    LUNAR_DECLARE_METHOD(CLuaBaseEntity,isCustomizationEnabled),
 
     {nullptr,nullptr}
 };

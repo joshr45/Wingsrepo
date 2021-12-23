@@ -7,7 +7,11 @@ require("scripts/globals/status")
 -----------------------------------
 
 function onEffectGain(target, effect)
-    local power = math.min(effect:getPower(), target:getStat(tpz.mod.EVA))
+    local eva = target:getMod(tpz.mod.EVA)
+    if target:isPC() then
+        eva = target:getEVA()
+    end
+    local power = math.min(effect:getPower(), eva)
     effect:setPower(power)
     target:delMod(tpz.mod.EVA, power)
 end

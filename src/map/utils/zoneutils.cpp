@@ -38,6 +38,7 @@
 #include "../items/item_weapon.h"
 #include "../mob_spell_list.h"
 #include "../packets/entity_update.h"
+#include "../packets/chat_message.h"
 #include "../zone_instance.h"
 #include "../mob_modifier.h"
 
@@ -1288,6 +1289,131 @@ void AddServerVariable(const char* varName, int32 varVal)
 {
     int32 oldVal = GetServerVariable(varName);
     SetServerVariable(varName, oldVal + varVal);
+}
+
+int32 TonberryWeekendEventTask(time_point tick, CTaskMgr::CTask* PTask)
+{
+    if (!map_config.enable_tonberry_weekend) {
+        return 0;
+    }
+
+    uint32 now = (uint32)CVanaTime::getInstance()->getVanaTime();
+    bool isActive = map_config.weekendEvent;
+
+    if ((now - 549082809 - 3600) % 604800 < 43200) // it is 2pm to 2am on sun afternoon
+    { // -3600 is daylight savings time
+
+        Sql_t* sqlH7 = Sql_Malloc();
+        Sql_Connect(sqlH7, map_config.mysql_login.c_str(),
+            map_config.mysql_password.c_str(),
+            map_config.mysql_host.c_str(),
+            map_config.mysql_port,
+            map_config.mysql_database.c_str());
+
+        bool notify = false;
+        int32 ret = 0;
+
+        if (!isActive)
+        {
+            // activate it
+            map_config.weekendEvent = true;
+            notify = true;
+            ret = Sql_Query(SqlHandle, "SELECT * FROM weekendcounter WHERE timestamp > DATE_ADD(CURRENT_TIMESTAMP, INTERVAL -1 DAY);"); // timestamp on any action is after yesterday
+
+            if (Sql_NumRows(SqlHandle) > 0) // there is an update action within the past day. this means the server crashed while the event was up
+                notify = false; 
+            else
+                ret = Sql_Query(SqlHandle, "UPDATE weekendcounter SET vanahours = 0, timestamp = CURRENT_TIMESTAMP;"); // reset everything
+
+        }
+
+        std::string msg = "The Tonberry Sunday Seeding Event has just begun! +15% EXP and +10% on all drops from 2pm EST until 2am EST; enjoy, and thanks for playing!";
+        std::string msg0 = "You have earned two Event Gifts in your delivery box for logging in for the event! (2/6 total today)";
+        std::string msg1 = "You have earned an Event Gift in your delivery box for 1 hour of playtime during the event! (3/6 total today)";
+        std::string msg2 = "You have earned an Event Gift in your delivery box for 2 hours of playtime during the event! (4/6 total today)";
+        std::string msg3 = "You have earned an Event Gift in your delivery box for 3 hours of playtime during the event! (5/6 total today)";
+        std::string msg4 = "You have earned an Event Gift in your delivery box for 4 hours of playtime during the event! (6/6 total today)";
+        ret = Sql_Query(SqlHandle, "SELECT charid FROM accounts_sessions");
+        CCharEntity* PChar;
+        uint32 charid = 0;
+        uint16 vanahours = 0;
+        bool sendgift = false;
+        bool sendgiftextra = false;
+        if (ret != SQL_ERROR)
+        {
+            while (Sql_NextRow(SqlHandle) == SQL_SUCCESS)
+            {
+                PChar = zoneutils::GetChar(Sql_GetUIntData(SqlHandle, 0));
+                if (PChar)
+                {
+                    charid = PChar->id;
+                    vanahours = 0;
+                    sendgift = false;
+                    if (notify)
+                    {
+                        PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_1, msg));
+                        PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_3, msg0));
+                        sendgift = true;
+                        sendgiftextra = true;
+                    }
+                    else
+                    {
+                        ret = Sql_Query(sqlH7, "UPDATE weekendcounter SET vanahours = vanahours + 1 WHERE charid = %u;", charid);
+                        if (ret == SQL_ERROR) { ShowDebug("Weekend counter update failed."); }
+
+                        ret = Sql_Query(sqlH7, "SELECT vanahours FROM weekendcounter WHERE charid = %u;", charid);
+                        if (Sql_NumRows(sqlH7) == 0) { ret = Sql_Query(sqlH7, "INSERT INTO weekendcounter VALUES (%u,1,CURRENT_TIMESTAMP);", charid); vanahours = 1; }
+                        else { Sql_NextRow(sqlH7); vanahours = Sql_GetUIntData(sqlH7, 0); }
+
+                        if (vanahours == 24 || vanahours == 48 || vanahours == 72 || vanahours == 96)
+                        {
+                            if (vanahours == 24) { PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_3, msg1)); }
+                            if (vanahours == 48) { PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_3, msg2)); }
+                            if (vanahours == 72) { PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_3, msg3)); }
+                            if (vanahours == 96) { PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_3, msg4)); }
+                            sendgift = true;
+                        }
+                    }
+                    if (sendgift)
+                    {
+                        ret = Sql_Query(sqlH7, "INSERT INTO delivery_box (charid, charname, box, itemid, itemsubid, quantity, senderid, sender) VALUES "
+                            "(%u, (select charname from chars where charid=%u), 1, %u, 0, %u, 0, 'AH-Jeuno');", charid, charid, 4176, 1);
+                    }
+                    if (sendgiftextra)
+                    {
+                        ret = Sql_Query(sqlH7, "INSERT INTO delivery_box (charid, charname, box, itemid, itemsubid, quantity, senderid, sender) VALUES "
+                            "(%u, (select charname from chars where charid=%u), 1, %u, 0, %u, 0, 'AH-Jeuno');", charid, charid, 4176, 1);
+                    }
+                }
+            }
+        }
+        Sql_Free(sqlH7);
+    }
+    else // it is not between 2pm and 2am on a sunday/monday
+    {
+        if (isActive)
+        {
+            // deactivate it
+            map_config.weekendEvent = false;
+
+            std::string msg = "The Tonberry Sunday Seeding Event has just ended, thanks for dropping by! +15% EXP and +10% on all drops every Sun 2pm EST until Mon 2am EST!!";
+            int32 ret = Sql_Query(SqlHandle, "SELECT charid FROM accounts_sessions");
+            CCharEntity* PChar;
+            if (ret != SQL_ERROR)
+            {
+                while (Sql_NextRow(SqlHandle) == SQL_SUCCESS)
+                {
+                    PChar = zoneutils::GetChar(Sql_GetUIntData(SqlHandle, 0));
+                    if (PChar)
+                    {
+                        PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_1, msg));
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
 }
 
 }; // namespace zoneutils

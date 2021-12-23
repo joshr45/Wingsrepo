@@ -93,7 +93,6 @@ namespace charutils
     void	DistributeExperiencePoints(CCharEntity* PChar, CMobEntity* PMob);
     void	DistributeGil(CCharEntity* PChar, CMobEntity* PMob);
     void	DistributeItem(CCharEntity* PChar, CBaseEntity* PEntity, uint16 itemid, uint16 droprate);
-    void    tryCompleteGK75(CCharEntity* PChar);
     void	AddExperiencePoints(bool expFromRaise, CCharEntity* PChar, CBaseEntity* PMob, uint32 exp, EMobDifficulty mobCheck = EMobDifficulty::TooWeak, bool isexpchain = false);
 
     void	TrySkillUP(CCharEntity* PChar, SKILLTYPE SkillID, uint8 lvl);
@@ -283,6 +282,8 @@ namespace charutils
     EYellCheckResult CanUseYell(CCharEntity* PChar);
     bool IsYellSpamFiltered(CCharEntity* PChar);
     void SendYellDeclineMessage(CCharEntity* PChar, EYellCheckResult Reason);
+
+    int32 LogGil(time_point tick, CTaskMgr::CTask* PTask); // Log the amount of gil of all players once per hour.
 };
 
 #endif // _CHARUTILS_H

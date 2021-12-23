@@ -864,6 +864,7 @@ enum class Mod
     CONQUEST_REGION_BONUS     = 934, // Increases the influence points awarded to the player's nation when receiving conquest points
     CAMPAIGN_BONUS            = 935, // Increases the evaluation for allied forces by percentage
 
+    EXPERIENCE_BONUS_PERC     = 990,
     SUBTLE_BLOW_II            = 993, // Subtle Blow II Effect (Cap 50%) Total Effect (SB + SB_II cap 75%)
     GARDENING_WILT_BONUS      = 995, // Increases the number of Vanadays a plant can survive before it wilts
 
@@ -902,6 +903,9 @@ enum class Mod
     HUMANOID_CIRCLE = 1236,
     LUMORIAN_CIRCLE = 1237,
     LUMINION_CIRCLE = 1238,
+
+    AUTOMATON_MAGIC_COST      = 1300,
+    AUTOMATON_CAN_BARRAGE     = 1301,
 
     // These mods should not be directly set.  These are used to apply pet mods via latent effects
     PET_ATT_LATENT = 970, // Pet Attack bonus used for latents

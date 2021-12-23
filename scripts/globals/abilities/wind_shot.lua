@@ -70,6 +70,8 @@ function onUseAbility(player, target, ability, action)
     end
 
     local del = player:delItem(2178, 1) or player:delItem(2974, 1)
-    target:updateClaim(player)
+    if not target:isPC() then
+        target:updateClaim(player)
+    end
     return dmg
 end

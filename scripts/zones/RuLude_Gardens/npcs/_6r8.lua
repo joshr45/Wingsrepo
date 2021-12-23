@@ -7,6 +7,7 @@
 local ID = require("scripts/zones/RuLude_Gardens/IDs")
 require("scripts/globals/keyitems")
 require("scripts/globals/missions")
+require("scripts/globals/settings")
 -----------------------------------
 
 function onTrade(player, npc, trade)
@@ -48,6 +49,10 @@ end
 function onEventFinish(player, csid, option)
     if csid == 40 then
         finishMissionTimeline(player, 1, csid, option)
+        if MAGICITE_GIVES_AKETON then
+            player:addItem(14430,1)
+            player:messageSpecial(ID.text.ITEM_OBTAINED,14430)
+        end
     elseif csid == 131 and option == 1 then
         player:setCharVar("MissionStatus", 1)
         if not player:hasKeyItem(tpz.ki.ARCHDUCAL_AUDIENCE_PERMIT) then

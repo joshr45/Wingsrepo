@@ -78,6 +78,7 @@ zones[tpz.zone.CASTLE_OZTROJA] =
         },
         YAGUDO_AVATAR              = 17396134,
         HUU_XALMO_THE_SAVAGE       = 17396140,
+        ODONTOTYRANNUS             = 17396141,
         MIMIC                      = 17396144,
     },
     npc =

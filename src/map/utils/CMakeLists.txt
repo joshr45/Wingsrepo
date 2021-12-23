@@ -1,4 +1,6 @@
 set(SOURCES
+    ahautils.cpp
+    ahautils.h
     attackutils.cpp
     attackutils.h
     battlefieldutils.cpp
@@ -15,8 +17,8 @@ set(SOURCES
     chatfilter.h
     fishingutils.cpp
     fishingutils.h
-	flistutils.cpp
-	flistutils.h
+    flistutils.cpp
+    flistutils.h
     gardenutils.cpp
     gardenutils.h
     guildutils.cpp

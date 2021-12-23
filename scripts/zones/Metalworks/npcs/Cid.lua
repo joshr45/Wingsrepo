@@ -111,7 +111,7 @@ function onTrigger(player, npc)
         player:startEvent(845) -- COP event
     elseif (currentCOPMission == tpz.mission.id.cop.THE_ROAD_FORKS and player:getCharVar("EMERALD_WATERS_Status")== 7 and player:getCharVar("MEMORIES_OF_A_MAIDEN_Status")== 12) then --two paths are finished ?
         player:startEvent(847) -- COP event 3.3
-    elseif (player:getMainJob() == tpz.job.DRK and player:getMainLvl() >= AF2_QUEST_LEVEL and player:getQuestStatus(BASTOK, tpz.quest.id.bastok.DARK_LEGACY) == QUEST_COMPLETED and player:getQuestStatus(BASTOK, tpz.quest.id.bastok.DARK_PUPPET) == QUEST_AVAILABLE) then
+    elseif (((player:getMainJob() == tpz.job.DRK and player:getMainLvl() >= AF2_QUEST_LEVEL) or (player:isCustomizationEnabled(1) and player:getSubJob() == tpz.job.DRK and player:getSubLvl() >= AF2_QUEST_LEVEL)) and player:getQuestStatus(BASTOK, tpz.quest.id.bastok.DARK_LEGACY) == QUEST_COMPLETED and player:getQuestStatus(BASTOK, tpz.quest.id.bastok.DARK_PUPPET) == QUEST_AVAILABLE) then
         player:startEvent(760) -- Start Quest "Dark Puppet"
     elseif (currentMission == tpz.mission.id.bastok.GEOLOGICAL_SURVEY) then
         if (player:hasKeyItem(tpz.ki.RED_ACIDITY_TESTER)) then

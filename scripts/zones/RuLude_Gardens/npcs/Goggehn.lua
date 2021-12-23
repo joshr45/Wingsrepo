@@ -6,6 +6,7 @@
 -----------------------------------
 require("scripts/globals/keyitems")
 require("scripts/globals/missions")
+require("scripts/globals/settings")
 -----------------------------------
 
 function onTrade(player, npc, trade)
@@ -59,5 +60,9 @@ function onEventFinish(player, csid, option)
         player:setCharVar("MissionStatus", 4)
     elseif csid == 35 then
         finishMissionTimeline(player, 1, csid, option)
+        if MAGICITE_GIVES_AKETON then
+            player:addItem(14429,1)
+            player:messageSpecial(ID.text.ITEM_OBTAINED,14429)
+        end
     end
 end

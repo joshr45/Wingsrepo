@@ -643,14 +643,28 @@ namespace spell
                         usable = false;
                     }
                 }
-                if ((requirements & SPELLREQ_ADDENDUM_BLACK) && PCaster->GetMJob() == JOB_SCH)
+                if (requirements & SPELLREQ_ADDENDUM_BLACK && (PCaster->GetMJob() == JOB_SCH) && !(JobSLVL && PCaster->GetSLevel() >= JobSLVL))
                 {
                     if (!PCaster->StatusEffectContainer->HasStatusEffect({EFFECT_ADDENDUM_BLACK, EFFECT_ENLIGHTENMENT}))
                     {
                         usable = false;
                     }
                 }
-                else if ((requirements & SPELLREQ_ADDENDUM_WHITE) && PCaster->GetMJob() == JOB_SCH)
+                else if (requirements & SPELLREQ_ADDENDUM_BLACK && (PCaster->GetSJob() == JOB_SCH) && !(JobMLVL && PCaster->GetMLevel() >= JobMLVL))
+                {
+                    if (!PCaster->StatusEffectContainer->HasStatusEffect({ EFFECT_ADDENDUM_BLACK, EFFECT_ENLIGHTENMENT }))
+                    {
+                        usable = false;
+                    }
+                }
+                else if (requirements & SPELLREQ_ADDENDUM_WHITE && (PCaster->GetMJob() == JOB_SCH) && !(JobSLVL && PCaster->GetSLevel() >= JobSLVL))
+                {
+                    if (!PCaster->StatusEffectContainer->HasStatusEffect({ EFFECT_ADDENDUM_WHITE, EFFECT_ENLIGHTENMENT }))
+                    {
+                        usable = false;
+                    }
+                }
+                else if (requirements & SPELLREQ_ADDENDUM_WHITE && (PCaster->GetSJob() == JOB_SCH) && !(JobMLVL && PCaster->GetMLevel() >= JobMLVL))
                 {
                     if (!PCaster->StatusEffectContainer->HasStatusEffect({EFFECT_ADDENDUM_WHITE, EFFECT_ENLIGHTENMENT}))
                     {

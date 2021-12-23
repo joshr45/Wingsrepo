@@ -75,10 +75,16 @@ local items = {
 }
 
 function onTrade(player, npc, trade)
+    if not player:isFishingEnabled() then
+        return
+    end
     unionRepresentativeTrade(player, npc, trade, 10021, 0)
 end
 
 function onTrigger(player, npc)
+    if not player:isFishingEnabled() then
+        return
+    end
     unionRepresentativeTrigger(player, 0, 10020, "guild_fishing", keyitems)
 end
 

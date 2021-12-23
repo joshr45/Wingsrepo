@@ -39,11 +39,12 @@
 
 CPetEntity::CPetEntity(PETTYPE petType)
 {
-	objtype = TYPE_PET;
-	m_PetType = petType;
-	m_EcoSystem = SYSTEM_UNCLASSIFIED;
-	allegiance = ALLEGIANCE_PLAYER;
+    objtype = TYPE_PET;
+    m_PetType = petType;
+    m_EcoSystem = SYSTEM_UNCLASSIFIED;
+    allegiance = ALLEGIANCE_PLAYER;
     m_MobSkillList = 0;
+    m_IsSpiritPet = false;
     m_HasSpellScript = 0;
     PAI = std::make_unique<CAIContainer>(this, std::make_unique<CPathFind>(this), std::make_unique<CPetController>(this),
         std::make_unique<CTargetFind>(this));
@@ -101,7 +102,12 @@ WYVERNTYPE CPetEntity::getWyvernType()
 {
   TPZ_DEBUG_BREAK_IF(PMaster == nullptr);
 
-  switch(PMaster->GetSJob())
+  JOBTYPE job = PMaster->GetMJob();
+  if (job == JOB_DRG) {
+      job = PMaster->GetSJob();
+  }
+
+  switch(job)
   {
     case JOB_BLM:
     case JOB_BLU:

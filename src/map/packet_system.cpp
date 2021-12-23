@@ -407,7 +407,9 @@ void SmallPacket0x00A(map_session_data_t* const PSession, CCharEntity* const PCh
 
     if (PChar->m_moghouseID != 0)
     {
-        gardenutils::UpdateGardening(PChar, false);
+        if (!map_config.disable_gardening) {
+            gardenutils::UpdateGardening(PChar, false);
+        }
     }
 
     PChar->pushPacket(new CDownloadingDataPacket());
@@ -430,7 +432,7 @@ void SmallPacket0x00C(map_session_data_t* const PSession, CCharEntity* const PCh
     TracyZoneScoped;
     PChar->pushPacket(new CInventorySizePacket(PChar));
     PChar->pushPacket(new CMenuConfigPacket(PChar));
-    PChar->pushPacket(new CCharJobsPacket(PChar));
+    PChar->pushPacket(new CCharJobsPacket(PChar, true));
 
     // TODO: While in mog house; treasure pool is not created.
     if (PChar->PTreasurePool != nullptr)
@@ -442,7 +444,7 @@ void SmallPacket0x00C(map_session_data_t* const PSession, CCharEntity* const PCh
     // respawn any pets from last zone
     if (PChar->petZoningInfo.respawnPet == true)
     {
-        // only repawn pet in valid zones
+        // only respawn pet in valid zones
         if (PChar->loc.zone->CanUseMisc(MISC_PET) && !PChar->m_moghouseID)
         {
             switch (PChar->petZoningInfo.petType)
@@ -622,14 +624,14 @@ void SmallPacket0x011(map_session_data_t* const PSession, CCharEntity* const PCh
     }
 
     // todo: kill player til theyre dead and bsod
-    const char* fmtQuery = "SELECT version_mismatch FROM accounts_sessions WHERE charid = %u";
-    int32       ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id);
-    if (ret != SQL_ERROR && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
-    {
-        // On zone change, only sending a version message if mismatch
-        // if ((bool)Sql_GetUIntData(SqlHandle, 0))
-        // PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_1, "Server does not support this client version."));
-    }
+    //const char* fmtQuery = "SELECT version_mismatch FROM accounts_sessions WHERE charid = %u";
+    //int32       ret      = Sql_Query(SqlHandle, fmtQuery, PChar->id);
+    //if (ret != SQL_ERROR && Sql_NextRow(SqlHandle) == SQL_SUCCESS)
+    //{
+    //    // On zone change, only sending a version message if mismatch
+    //    // if ((bool)Sql_GetUIntData(SqlHandle, 0))
+    //    // PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_1, "Server does not support this client version."));
+    //}
     return;
 }
 
@@ -871,7 +873,7 @@ void SmallPacket0x01A(map_session_data_t* const PSession, CCharEntity* const PCh
         break;
         case 0x02: // attack
         {
-            if (PChar->animation == ANIMATION_HEALING)
+            if (PChar->isSitting())
                 return;
 
             if (PChar->isMounted())
@@ -980,6 +982,10 @@ void SmallPacket0x01A(map_session_data_t* const PSession, CCharEntity* const PCh
         break;
         case 0x0E: // Fishing
         {
+            if (map_config.disable_fishing) {
+                return;
+            }
+
             if (PChar->StatusEffectContainer->HasPreventActionEffect())
             {
                 return;
@@ -1007,6 +1013,10 @@ void SmallPacket0x01A(map_session_data_t* const PSession, CCharEntity* const PCh
         break;
         case 0x11: // chocobo digging
         {
+            if (map_config.disable_chocobo_digging)
+            {
+                return;
+            }
             if (!PChar->isMounted())
             {
                 return;
@@ -1282,6 +1292,71 @@ void SmallPacket0x029(map_session_data_t* const PSession, CCharEntity* const PCh
 
     if (ToLocationID >= MAX_CONTAINER_ID || FromLocationID >= MAX_CONTAINER_ID)
         return;
+
+    // player not in moghouse, transferring to/from a storage option
+    if (PChar->m_moghouseID == 0 &&
+        (
+            (   FromLocationID == LOC_MOGSAFE ||
+                FromLocationID == LOC_MOGSAFE2 ||
+                FromLocationID == LOC_STORAGE ||
+                FromLocationID == LOC_MOGLOCKER
+            )
+            ||
+            (
+                    ToLocationID == LOC_MOGSAFE ||
+                    ToLocationID == LOC_MOGSAFE2 ||
+                    ToLocationID == LOC_STORAGE ||
+                    ToLocationID == LOC_MOGLOCKER
+            )
+        ))
+    {
+
+        uint16 zone = (uint16)PChar->loc.zone->GetID();
+        float x = PChar->loc.p.x;
+        float z = PChar->loc.p.z;
+
+        if (
+            !(zone == 248 && x >= 57.0f && x <= 75.0f && z >= -11.0f && z <= 7.0f) // selbina nomad moogles
+            &&
+            !(zone == 249 && x >= 7.0f && x <= 27.0f && z >= 54.0f && z <= 72.0f) // mhaura nomad moogles
+            &&
+            !(zone == 247 && x >= -19.0f && x <= 14.0f && z >= 0.0f && z <= 28.0f) // rabao nomad moogles
+            &&
+            !(zone == 250 && x >= 7.0f && x <= 21.0f && z <= -76.0f && z >= -91.0f) // kazham nomad moogle 1
+            &&
+            !(zone == 250 && x >= 33.0f && x <= 52.0f && z <= -139.0f && z >= -155.0f) // kazham nomad moogle 2
+            &&
+            !(zone == 252 && x >= -70.0f && x <= -37.0f && z <= 48.0f && z >= 42.0f) // norg nomad moogles
+            &&
+            !(zone == 53 && x >= -18.0f && x <= 17.0f && z >= 20.0f && z <= 59.0f) // nashmau nomad moogles
+            &&
+            !(zone == 26 && x >= -120.0f && x <= -96.0f && z >= 31.0f && z <= 61.0f) // taznavian safehold nomad moogles
+            )
+
+        {
+            char cheatDesc[128];
+            snprintf(cheatDesc, sizeof(cheatDesc) - 1, "%s tried to use their mog storage outside their house (pos=%u, x=%f, z=%f)", PChar->name.c_str(),
+                PChar->getZone(), PChar->GetXPos(), PChar->GetZPos());
+            cheatDesc[127] = '\0';
+            anticheat::ReportCheatIncident(PChar, anticheat::CheatID::CHEAT_ID_MOGSAFE, PChar->getZone(), cheatDesc, 100);
+            if (anticheat::GetCheatPunitiveAction(anticheat::CheatID::CHEAT_ID_MOGSAFE, NULL, 0) & anticheat::CHEAT_ACTION_BLOCK)
+            {
+                return;
+            }
+        }
+    }
+
+    if (!map_config.storage_ignore_features) {
+        if ((FromLocationID == LOC_MOGSATCHEL || ToLocationID == LOC_MOGSATCHEL) && (!(PChar->m_accountFeatures & 0x01))) {
+            return;
+        }
+        if ((FromLocationID == LOC_WARDROBE3 || ToLocationID == LOC_WARDROBE3) && (!(PChar->m_accountFeatures & 0x04))) {
+            return;
+        }
+        if ((FromLocationID == LOC_WARDROBE4 || ToLocationID == LOC_WARDROBE4) && (!(PChar->m_accountFeatures & 0x08))) {
+            return;
+        }
+    }
 
     CItem* PItem = PChar->getStorage(FromLocationID)->GetItem(FromSlotID);
 
@@ -2022,6 +2097,28 @@ void SmallPacket0x04B(map_session_data_t* const PSession, CCharEntity* const PCh
     bug occurs on stock Topaz."));
     }
     */
+
+    if (map_config.weekendEvent)
+    {
+        PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_1, "The Tonberry Sunday Seeding Event is currently active! +15% EXP and +10% drops from 2pm EST until 2am EST every Sunday; enjoy, and thanks for playing!", ""));
+
+        uint32 ret2 = 0;
+        bool awardgift = false;
+        std::string msg0 = "You have earned two Event Gifts in your delivery box for logging in for the event! (2/6 total today)";
+
+        ret2 = Sql_Query(SqlHandle, "SELECT vanahours FROM weekendcounter WHERE charid = %u;", PChar->id);
+        if (Sql_NumRows(SqlHandle) == 0) { ret2 = Sql_Query(SqlHandle, "INSERT INTO weekendcounter VALUES (%u,1,CURRENT_TIMESTAMP);", PChar->id); awardgift = true; }
+        else { Sql_NextRow(SqlHandle); if (Sql_GetUIntData(SqlHandle, 0) == 0) { awardgift = true; ret2 = Sql_Query(SqlHandle, "UPDATE weekendcounter SET vanahours = 1 WHERE charid = %u;",PChar->id); } }
+        if (awardgift)
+        {
+            ret2 = Sql_Query(SqlHandle, "INSERT INTO delivery_box (charid, charname, box, itemid, itemsubid, quantity, senderid, sender) VALUES "
+                "(%u, (select charname from chars where charid=%u), 1, %u, 0, %u, 0, 'AH-Jeuno');", PChar->id, PChar->id, 4176, 1);
+            ret2 = Sql_Query(SqlHandle, "INSERT INTO delivery_box (charid, charname, box, itemid, itemsubid, quantity, senderid, sender) VALUES "
+                "(%u, (select charname from chars where charid=%u), 1, %u, 0, %u, 0, 'AH-Jeuno');", PChar->id, PChar->id, 4176, 1);
+            PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_3, msg0));
+        }
+    }
+
     return;
 }
 
@@ -2068,6 +2165,8 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
     // 0x0e - Opening to receive mail..
     // 0x0f - Closing mail window..
 
+    // Inbox action 0e 01 05 then 0f when closing
+
     switch (action)
     {
         case 0x01:
@@ -2102,12 +2201,12 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
                             Sql_GetData(SqlHandle, 5, &extra, &length);
                             memcpy(PItem->m_extra, extra, (length > sizeof(PItem->m_extra) ? sizeof(PItem->m_extra) : length));
 
-                            if (boxtype == 2)
+                            if (boxtype == 2) // Outbox
                             {
                                 PItem->setSender(Sql_GetData(SqlHandle, 7));
                                 PItem->setReceiver(Sql_GetData(SqlHandle, 6));
                             }
-                            else
+                            else // Inbox
                             {
                                 PItem->setSender(Sql_GetData(SqlHandle, 6));
                                 PItem->setReceiver(Sql_GetData(SqlHandle, 7));
@@ -2320,9 +2419,9 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
             uint8 received_items = 0;
             int32 ret            = SQL_ERROR;
 
-            if (boxtype == 0x01)
+            if (boxtype == 0x01) // Inbox
             {
-                int limit = 0;
+                int limit = 0; // how many DBox slots we have empty
                 for (int i = 0; i < 8; ++i)
                 {
                     if (PChar->UContainer->IsSlotEmpty(i))
@@ -2350,7 +2449,7 @@ void SmallPacket0x04D(map_session_data_t* const PSession, CCharEntity* const PCh
         }
         case 0x06: // Move item to received
         {
-            if (boxtype == 1)
+            if (boxtype == 1) // Inbox
             {
                 bool isAutoCommitOn = Sql_GetAutoCommit(SqlHandle);
                 bool commit         = false;
@@ -2959,7 +3058,7 @@ void SmallPacket0x04E(map_session_data_t* const PSession, CCharEntity* const PCh
 
                 if (PItem != nullptr)
                 {
-                    if (PItem->getFlag() & ITEM_FLAG_RARE)
+                    if ((!map_config.disable_rare_item_limit) && (PItem->getFlag() & ITEM_FLAG_RARE))
                     {
                         for (uint8 LocID = 0; LocID < MAX_CONTAINER_ID; ++LocID)
                         {
@@ -3527,8 +3626,8 @@ void SmallPacket0x05E(map_session_data_t* const PSession, CCharEntity* const PCh
                 {
                     if (map_config.mog_garden_enabled)
                     {
-                    destinationZone = ZONE_MOG_GARDEN;
-                }
+                        destinationZone = ZONE_MOG_GARDEN;
+                    }
                     else
                     {
                         destinationZone = PChar->getZone();
@@ -3663,7 +3762,7 @@ void SmallPacket0x061(map_session_data_t* const PSession, CCharEntity* const PCh
     TracyZoneScoped;
     PChar->pushPacket(new CCharUpdatePacket(PChar));
     PChar->pushPacket(new CCharHealthPacket(PChar));
-    PChar->pushPacket(new CCharStatsPacket(PChar));
+    PChar->pushPacket(new CCharStatsPacket(PChar, false));
     PChar->pushPacket(new CCharSkillsPacket(PChar));
     PChar->pushPacket(new CCharRecastPacket(PChar));
     PChar->pushPacket(new CMenuMeritPacket(PChar));
@@ -3715,6 +3814,11 @@ void SmallPacket0x064(map_session_data_t* const PSession, CCharEntity* const PCh
 void SmallPacket0x066(map_session_data_t* const PSession, CCharEntity* const PChar, CBasicPacket data)
 {
     TracyZoneScoped;
+
+    if (map_config.disable_fishing) {
+        return;
+    }
+
     // PrintPacket(data);
     uint8 anim = PChar->animation;
     // ShowDebug("0x066 anim is %u\n",anim);
@@ -5163,6 +5267,14 @@ void SmallPacket0x0BE(map_session_data_t* const PSession, CCharEntity* const PCh
         {
             if (PChar->m_moghouseID)
             {
+                if (map_config.dual_main_job || map_config.all_jobs_dual_wield) {
+                    if (charutils::GetCharVar(PChar, "JobFlipState") > 0)
+                    {
+                        PChar->pushPacket(new CChatMessagePacket(PChar, CHAT_MESSAGE_TYPE::MESSAGE_SYSTEM_3, "You must disable !flip mode to raise or lower merits.", "System"));
+                        return;
+                    }
+                }
+
                 MERIT_TYPE merit = (MERIT_TYPE)(data.ref<uint16>(0x06) << 1);
 
                 if (PChar->PMeritPoints->IsMeritExist(merit))
@@ -5179,6 +5291,7 @@ void SmallPacket0x0BE(map_session_data_t* const PSession, CCharEntity* const PCh
                     }
                     if (tookEffect)
                     {
+                        PChar->pushPacket(new CCharJobExtraPacket(PChar, true));
                         PChar->pushPacket(new CMenuMeritPacket(PChar));
                         PChar->pushPacket(new CMeritPointsCategoriesPacket(PChar, merit));
 
@@ -5195,7 +5308,7 @@ void SmallPacket0x0BE(map_session_data_t* const PSession, CCharEntity* const PCh
                         PChar->addHP(PChar->GetMaxHP());
                         PChar->addMP(PChar->GetMaxMP());
                         PChar->pushPacket(new CCharUpdatePacket(PChar));
-                        PChar->pushPacket(new CCharStatsPacket(PChar));
+                        PChar->pushPacket(new CCharStatsPacket(PChar, true));
                         PChar->pushPacket(new CCharSkillsPacket(PChar));
                         PChar->pushPacket(new CCharRecastPacket(PChar));
                         PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -6419,6 +6532,11 @@ void SmallPacket0x0FB(map_session_data_t* const PSession, CCharEntity* const PCh
 void SmallPacket0x0FC(map_session_data_t* const PSession, CCharEntity* const PChar, CBasicPacket data)
 {
     TracyZoneScoped;
+
+    if (map_config.disable_gardening) {
+        return;
+    }
+
     uint16 potItemID = data.ref<uint16>(0x04);
     uint16 itemID    = data.ref<uint16>(0x06);
 
@@ -6491,6 +6609,11 @@ void SmallPacket0x0FC(map_session_data_t* const PSession, CCharEntity* const PCh
 void SmallPacket0x0FD(map_session_data_t* const PSession, CCharEntity* const PChar, CBasicPacket data)
 {
     TracyZoneScoped;
+
+    if (map_config.disable_gardening) {
+        return;
+    }
+
     uint16 itemID = data.ref<uint16>(0x04);
     if (itemID == 0)
         return;
@@ -6550,6 +6673,11 @@ void SmallPacket0x0FD(map_session_data_t* const PSession, CCharEntity* const PCh
 void SmallPacket0x0FE(map_session_data_t* const PSession, CCharEntity* const PChar, CBasicPacket data)
 {
     TracyZoneScoped;
+
+    if (map_config.disable_gardening) {
+        return;
+    }
+
     uint16 ItemID = data.ref<uint16>(0x04);
     if (ItemID == 0)
         return;
@@ -6615,6 +6743,11 @@ void SmallPacket0x0FE(map_session_data_t* const PSession, CCharEntity* const PCh
 void SmallPacket0x0FF(map_session_data_t* const PSession, CCharEntity* const PChar, CBasicPacket data)
 {
     TracyZoneScoped;
+
+    if (map_config.disable_gardening) {
+        return;
+    }
+
     uint16 itemID = data.ref<uint16>(0x04);
     if (itemID == 0)
         return;
@@ -6728,11 +6861,12 @@ void SmallPacket0x100(map_session_data_t* const PSession, CCharEntity* const PCh
         PChar->health.mp = PChar->GetMaxMP();
         PChar->updatemask |= UPDATE_HP;
 
+        charutils::CheckValidEquipment(PChar);
         charutils::SaveCharStats(PChar);
 
-        PChar->pushPacket(new CCharJobsPacket(PChar));
+        PChar->pushPacket(new CCharJobsPacket(PChar, true));
         PChar->pushPacket(new CCharUpdatePacket(PChar));
-        PChar->pushPacket(new CCharStatsPacket(PChar));
+        PChar->pushPacket(new CCharStatsPacket(PChar, true));
         PChar->pushPacket(new CCharSkillsPacket(PChar));
         PChar->pushPacket(new CCharRecastPacket(PChar));
         PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -6756,6 +6890,12 @@ void SmallPacket0x102(map_session_data_t* const PSession, CCharEntity* const PCh
     uint8 job = data.ref<uint8>(0x08);
     if ((PChar->GetMJob() == JOB_BLU || PChar->GetSJob() == JOB_BLU) && job == JOB_BLU)
     {
+        if (PChar->lastInCombat + 35 > (uint32)CVanaTime::getInstance()->getVanaTime())
+        {
+            PChar->pushPacket(new CChatMessagePacket(PChar, (CHAT_MESSAGE_TYPE)29, "You must be out of combat for a short period to set spells.", ""));
+            return;
+        }
+
         // This may be a request to add or remove set spells, so lets check.
 
         uint8 spellToAdd      = data.ref<uint8>(0x04); // this is non-zero if client wants to add.
@@ -6794,7 +6934,7 @@ void SmallPacket0x102(map_session_data_t* const PSession, CCharEntity* const PCh
             PChar->pushPacket(new CCharAbilitiesPacket(PChar));
             PChar->pushPacket(new CCharJobExtraPacket(PChar, true));
             PChar->pushPacket(new CCharJobExtraPacket(PChar, false));
-            PChar->pushPacket(new CCharStatsPacket(PChar));
+            PChar->pushPacket(new CCharStatsPacket(PChar, true));
             PChar->UpdateHealth();
         }
         else
@@ -6822,7 +6962,7 @@ void SmallPacket0x102(map_session_data_t* const PSession, CCharEntity* const PCh
                     PChar->pushPacket(new CCharAbilitiesPacket(PChar));
                     PChar->pushPacket(new CCharJobExtraPacket(PChar, true));
                     PChar->pushPacket(new CCharJobExtraPacket(PChar, false));
-                    PChar->pushPacket(new CCharStatsPacket(PChar));
+                    PChar->pushPacket(new CCharStatsPacket(PChar, true));
                     PChar->UpdateHealth();
                 }
                 else
@@ -7231,6 +7371,11 @@ void SmallPacket0x10F(map_session_data_t* const PSession, CCharEntity* const PCh
 void SmallPacket0x110(map_session_data_t* const PSession, CCharEntity* const PChar, CBasicPacket data)
 {
     TracyZoneScoped;
+
+    if (map_config.disable_fishing) {
+        return;
+    }
+
     // PrintPacket(data);
     uint8 anim = PChar->animation;
     // ShowDebug("SmallPacket0x110 current animation is %u\n",anim);

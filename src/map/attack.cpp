@@ -470,7 +470,7 @@ bool CAttack::CheckCover()
 void CAttack::ProcessDamage()
 {
     // Sneak attack.
-    if (m_attacker->GetMJob() == JOB_THF &&
+    if ((m_attacker->GetMJob() == JOB_THF || (map_config.dual_main_job && (m_attacker->GetSJob() == JOB_THF))) &&
         m_isFirstSwing &&
         m_attacker->StatusEffectContainer->HasStatusEffect(EFFECT_SNEAK_ATTACK) &&
         ((abs(m_victim->loc.p.rotation - m_attacker->loc.p.rotation) < 23) ||
@@ -481,7 +481,7 @@ void CAttack::ProcessDamage()
     }
 
     // Trick attack.
-    if (m_attacker->GetMJob() == JOB_THF &&
+    if ((m_attacker->GetMJob() == JOB_THF || (map_config.dual_main_job && (m_attacker->GetSJob() == JOB_THF))) &&
         m_isFirstSwing &&
         m_attackRound->GetTAEntity() != nullptr)
     {
@@ -585,7 +585,9 @@ void CAttack::ProcessDamage()
     {
         if (auto weapon = dynamic_cast<CItemWeapon*>(m_attacker->m_Weapons[slot]))
         {
-            charutils::TrySkillUP((CCharEntity*)m_attacker, (SKILLTYPE)weapon->getSkillType(), m_victim->GetMLevel());
+            if (m_attacker->objtype == TYPE_PC && ((CCharEntity*)m_attacker)->m_isPvp == false) {
+                charutils::TrySkillUP((CCharEntity*)m_attacker, (SKILLTYPE)weapon->getSkillType(), m_victim->GetMLevel());
+            }
         }
 
         if (m_attacker->objtype == TYPE_PET && m_attacker->PMaster && m_attacker->PMaster->objtype == TYPE_PC &&

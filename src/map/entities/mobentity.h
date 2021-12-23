@@ -99,7 +99,8 @@ enum BEHAVIOUR : uint16
     BEHAVIOUR_RAISABLE     = 0x004, // mob can be raised via Raise spells
     BEHAVIOUR_NOHELP       = 0x008, // mob can not be targeted by helpful magic from players (cure, protect, etc)
     BEHAVIOUR_AGGRO_AMBUSH = 0x200, // mob aggroes by ambush
-    BEHAVIOUR_NO_TURN      = 0x400  // mob does not turn to face target
+    BEHAVIOUR_NO_TURN      = 0x400, // mob does not turn to face target
+    BEHAVIOUR_NO_ACTION    = 0x800  // mob takes no action (Brittle Rock)
 };
 
 class CMobSkillState;
@@ -219,6 +220,8 @@ public:
     // aggro ranges
     bool      m_disableScent;             // stop detecting by scent
     float     m_maxRoamDistance;          // maximum distance mob can be from spawn before despawning
+
+    uint32    aggroTimer;                 // when the mob can aggro again, used for BST's Leave command so they dont get aggro right after
 
     uint8     m_Type;                     // mob type
     bool      m_Aggro;

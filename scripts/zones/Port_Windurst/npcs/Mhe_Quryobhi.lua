@@ -10,6 +10,9 @@ function onTrade(player, npc, trade)
 end
 
 function onTrigger(player, npc)
+    if not player:isFishingEnabled() then
+        return
+    end
     player:startEvent(206)
 end
 

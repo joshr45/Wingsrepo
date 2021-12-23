@@ -13,6 +13,9 @@ function onTrade(player, npc, trade)
 end
 
 function onTrigger(player, npc)
+    if not player:isFishingEnabled() then
+        return
+    end
     if (player:sendGuild(517, 3, 18, 5)) then
         player:showText(npc, ID.text.BABUBU_SHOP_DIALOG)
     end

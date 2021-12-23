@@ -1125,6 +1125,7 @@ namespace petutils
                 auto state = dynamic_cast<CAbilityState*>(PMaster->PAI->GetCurrentState());
                 if ((state && state->GetAbility()->getID() == ABILITY_LEAVE) || PChar->loc.zoning || PChar->isDead())
                 {
+                    PMob->aggroTimer = (uint32)CVanaTime::getInstance()->getVanaTime() + 5;
                     PMob->PEnmityContainer->Clear();
                     PMob->m_OwnerID.clean();
                     PMob->updatemask |= UPDATE_STATUS;
@@ -1362,7 +1363,7 @@ namespace petutils
 
         PPetData = *std::find_if(g_PPetList.begin(), g_PPetList.end(), [PetID](Pet_t* t) { return t->PetID == PetID; });
 
-        if (PMaster->GetMJob() != JOB_DRG && PetID == PETID_WYVERN)
+        if (PMaster->GetMJob() != JOB_DRG && (!((map_config.dual_main_job) && (PMaster->GetSJob() == JOB_DRG))) && PetID == PETID_WYVERN)
         {
             return;
         }
@@ -1482,6 +1483,18 @@ namespace petutils
                 PPet->PAI->SetController(std::make_unique<CTargetedAvatarController>(PPet,PCastTarget));
             }
             
+        }
+
+        std::string modQuery = "SELECT mod_id, mod_value FROM pet_mods WHERE pet_type = %u AND pet_id = %u;";
+        if (Sql_Query(SqlHandle, modQuery.c_str(), petType, PetID) != SQL_ERROR && Sql_NumRows(SqlHandle) != 0) {
+            while (Sql_NextRow(SqlHandle) == SQL_SUCCESS) {
+                PPet->setModifier(static_cast<Mod>(Sql_GetUIntData(SqlHandle, 0)), Sql_GetUIntData(SqlHandle, 1));
+            }
+        }
+
+        if (PetID <= PETID_DARKSPIRIT)
+        {
+            PPet->m_IsSpiritPet = true;
         }
 
         PPet->loc = PMaster->loc;

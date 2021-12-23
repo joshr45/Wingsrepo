@@ -11,6 +11,9 @@ function onTrade(player, npc, trade)
 end
 
 function onTrigger(player, npc)
+    if not player:isFishingEnabled() then
+        return
+    end
     if player:sendGuild(520, 1, 23, 5) then
         player:showText(npc, ID.text.RAJMONDA_SHOP_DIALOG)
     end

@@ -36,7 +36,7 @@ function onUseAbility(player, target, ability)
     end
 
     -- Main job factors
-    if player:getMainJob() == tpz.job.PLD then
+    if ((player:getMainJob() == tpz.job.PLD) or (player:isCustomizationEnabled(1) and player:getSubJob() == tpz.job.PLD)) then
         damage = math.floor(damage)
     else
         damage = math.floor(damage / 2.2)
@@ -85,7 +85,9 @@ function onUseAbility(player, target, ability)
     damage = damage * (pdif / 1000)
     damage = utils.stoneskin(target, damage)
     target:takeDamage(damage, player, tpz.attackType.PHYSICAL, tpz.damageType.BLUNT)
-    target:updateEnmityFromDamage(player, damage)
+    if not target:isPC() then
+        target:updateEnmityFromDamage(player, damage)
+    end
     ability:setMsg(tpz.msg.basic.JA_DAMAGE)
 
     return damage

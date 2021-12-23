@@ -122,6 +122,7 @@ CMobEntity::CMobEntity()
     m_bcnmID = 0;
 
     m_maxRoamDistance = 50.0f;
+    aggroTimer = 1;
     m_disableScent = false;
 
     memset(&m_SpawnPoint, 0, sizeof(m_SpawnPoint));
@@ -1134,6 +1135,15 @@ void CMobEntity::DropItems(CCharEntity* PChar)
                 // 80 % +(80 % * 20 % * 0.8) = 92.8 %
 
                 uint16 rate = group.GroupRate;
+
+                if (map_config.weekendEvent)
+                {
+                    rate = (uint16)((float)rate * 1.1f);
+                    if (rate > 1000)
+                    {
+                        rate = 1000;
+                    }
+                }
 
                 if (roll + 1 < maxRolls) // not our last roll
                 {

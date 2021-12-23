@@ -107,6 +107,7 @@ struct map_config_t
     float  exp_retain;                // percentage of normally lost experience to retain upon death
     int8   exp_loss_level;            // Minimum main job level at which a character may lose experience points.
     bool   level_sync_enable;         // Enable/disable Level Sync
+    uint8  level_sync_range;          // If non-zero, sets a maximum level sync range for parties
     bool   disable_gear_scaling;      // Disables ability to equip higher level gear when level cap/sync effect is on player.
     bool   all_jobs_widescan;         // Enable/disable jobs other than BST and RNG having widescan.
     int8   speed_mod;                 // Modifier to add to player speed
@@ -183,6 +184,21 @@ struct map_config_t
     uint16  daily_tally_limit;        // Upper limit of daily tally points for Gobbie Mystery Box
     bool   mission_storage_recovery;  // Recalculate inventory sizes according to mission progress on login
     bool   helpdesk_enabled;          // GM tickets through helpdesk menu enabled
+    bool   dual_main_job;             // Treat the subjob as a second main job. Also enables the custom !flip command, swapping job and subjob
+    bool   all_jobs_dual_wield;       // Enables the custom !dw command to allow all jobs to dual wield. All jobs must be added to the traits table separately.
+    bool   disable_chocobo_digging;   // Completely disable Chocobo digging functionality
+    bool   disable_rare_item_limit;   // Disable all limits on rare items (can hold multiple)
+    bool   weekendEvent;              // Tonberry's custom weekend event is active
+    bool   disable_fishing;           // Completely disable fishing
+    bool   disable_gardening;         // Completely disable gardening
+    bool   storage_mission_unlock;    // Storage unlocks with mission progress
+    bool   storage_ignore_features;   // Ignore the account features for Mog Satchel and Mog Wardrobe 3+4
+    bool   force_enable_mog_locker;   // Mog locker always enabled
+    bool   enable_aha;                // Enable the !aha command (AH helper)
+    bool   enable_duel_pvp;           // Enable basic PvP via the !duel command
+    bool   enable_tonberry_weekend;   // Enable the Tonberry weekend event
+    bool   enable_tonberry_xp_buffs;  // Enable the Tonberry experience gain boosts
+    uint16 log_gil_period;            // Log all players' current gil periodically (specify in minutes, zero to disable)
 };
 
 /************************************************************************

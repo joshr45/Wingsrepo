@@ -117,6 +117,11 @@ uint32 CAlliance::partyCount(void)
     return 0;
 }
 
+uint8 CAlliance::partyCountLocal()
+{
+    return static_cast<uint8>(partyList.size());
+}
+
 void CAlliance::removeParty(CParty * party)
 {
 
@@ -271,6 +276,14 @@ void CAlliance::addParty(uint32 partyid)
 	ref<uint32>(data, 0) = m_AllianceID;
     ref<uint32>(data, 4) = partyid;
     message::send(MSG_PT_RELOAD, data, sizeof data, nullptr);
+}
+
+CParty* CAlliance::getParty(uint8 number)
+{
+    if (number >= partyList.size()) {
+        return nullptr;
+    }
+    return partyList.at(number);
 }
 
 void CAlliance::pushParty(CParty* PParty, uint8 number)

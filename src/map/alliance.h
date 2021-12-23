@@ -44,6 +44,7 @@ public:
 	uint32  m_AllianceID;
 	CParty* getMainParty();
 	void setMainParty(CParty * aLeader);
+    CParty* getParty(uint8 number);
     void addParty(CParty * party);
 	void addParty(uint32 partyid);
     void pushParty(CParty* PParty, uint8 number);
@@ -51,6 +52,7 @@ public:
     void delParty(CParty* party);
     void dissolveAlliance(bool playerInitiated = true);
 	uint32 partyCount(void);
+    uint8 partyCountLocal();
     void assignAllianceLeader(const char* name);
 
 	std::vector<CParty*> partyList; //list of parties in alliance

@@ -1474,6 +1474,14 @@ namespace luautils
             return -1;
         }
 
+        PChar->lastZoneTimer = (uint32)CVanaTime::getInstance()->getVanaTime();
+
+        if (PChar->m_isPvp) {
+            PChar->m_isPvp = false;
+            PChar->allegiance = ALLEGIANCE_PLAYER;
+        }
+        PChar->m_pvpSync = 0;
+
         CLuaBaseEntity LuaBaseEntity(PChar);
         Lunar<CLuaBaseEntity>::push(LuaHandle, &LuaBaseEntity);
 
@@ -1536,8 +1544,8 @@ namespace luautils
         charutils::BuildingCharTraitsTable(PChar);
         charutils::BuildingCharAbilityTable(PChar);
         charutils::CheckValidEquipment(PChar);
-        PChar->pushPacket(new CCharJobsPacket(PChar));
-        PChar->pushPacket(new CCharStatsPacket(PChar));
+        PChar->pushPacket(new CCharJobsPacket(PChar, true));
+        PChar->pushPacket(new CCharStatsPacket(PChar, true));
         PChar->pushPacket(new CCharSkillsPacket(PChar));
         PChar->pushPacket(new CCharRecastPacket(PChar));
         PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -3971,7 +3979,9 @@ namespace luautils
             if (PPet->getPetType() == PETTYPE_AVATAR && PPet->PMaster->objtype == TYPE_PC)
             {
                 CCharEntity* PMaster = (CCharEntity*)PPet->PMaster;
-                if (PMaster->GetMJob() == JOB_SMN) charutils::TrySkillUP(PMaster, SKILL_SUMMONING_MAGIC, PMaster->GetMLevel());
+                if ((PMaster->GetMJob() == JOB_SMN) || (map_config.dual_main_job && (PMaster->GetSJob() == JOB_SMN))) {
+                    charutils::TrySkillUP(PMaster, SKILL_SUMMONING_MAGIC, PMaster->GetMLevel());
+                }
             }
         }
 

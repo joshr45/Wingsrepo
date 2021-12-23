@@ -25,17 +25,50 @@
 
 #include "char_jobs.h"
 #include "../entities/charentity.h"
+#include "../utils/charutils.h"
 
 
-CCharJobsPacket::CCharJobsPacket(CCharEntity * PChar)
+CCharJobsPacket::CCharJobsPacket(CCharEntity * PChar, bool resetflips)
 {
 	this->type = 0x1B;
     this->size = 0x34;
 
 	ref<uint8>(0x04) = PChar->look.race;
 
-	ref<uint8>(0x08) = PChar->GetMJob();			    // Highlight the main job in Yellow
-	ref<uint8>(0x0B) = PChar->GetSJob();			    // Highlight the sub job in Blue
+    if (map_config.dual_main_job || map_config.all_jobs_dual_wield) {
+        if (resetflips) {
+            charutils::SetCharVar(PChar, "JobFlipState", 0);
+
+            ref<uint8>(0x08) = PChar->GetMJob();			    // подсвечиваем желтым главную профессию
+            ref<uint8>(0x0B) = PChar->GetSJob();			    // подсвечиваем синим дополнительную профессию
+        }
+        else {
+            uint8 flipstate = (uint8)charutils::GetCharVar(PChar, "JobFlipState");
+
+            if (flipstate == 0) // not flipped
+            {
+                ref<uint8>(0x08) = PChar->GetMJob();
+                ref<uint8>(0x0B) = PChar->GetSJob();
+            }
+
+            else if (map_config.dual_main_job && (flipstate == 1)) // flipped
+            {
+                ref<uint8>(0x08) = PChar->GetSJob();
+                ref<uint8>(0x0B) = PChar->GetMJob();
+            }
+
+            else if (map_config.all_jobs_dual_wield && (flipstate == 2)) // dw workaround
+            {
+                ref<uint8>(0x08) = PChar->GetMJob();
+                ref<uint8>(0x0B) = (JOBTYPE)6; // thf
+            }
+        }
+    }
+    else {
+        // Tonberry customizations disabled
+        ref<uint8>(0x08) = PChar->GetMJob();			    // Highlight the main job in Yellow
+        ref<uint8>(0x0B) = PChar->GetSJob();			    // Highlight the sub job in Blue
+    }
 
 	memcpy(data+(0x0C), &PChar->jobs, 22);
 

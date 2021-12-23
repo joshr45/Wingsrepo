@@ -282,7 +282,7 @@ float CBattleEntity::GetStoreTPMultiplier()
     if (objtype == TYPE_PC)
     {
         auto PChar = (CCharEntity*)this;
-        if (PChar->GetMJob() == JOB_SAM)
+        if ((PChar->GetMJob() == JOB_SAM) || (map_config.dual_main_job && (PChar->GetSJob() == JOB_SAM)))
         {
             samuraiMeritBonus = PChar->PMeritPoints->GetMeritValue(MERIT_STORE_TP_EFFECT, PChar);
         }
@@ -936,7 +936,22 @@ void CBattleEntity::SetMLevel(uint8 mlvl)
 
 void CBattleEntity::SetSLevel(uint8 slvl)
 {
-    m_slvl = (slvl > (m_mlvl >> 1) ? (m_mlvl == 1 ? 1 : (m_mlvl >> 1)) : slvl);
+    if (map_config.dual_main_job) {
+        m_slvl = slvl * 2;
+
+        if (m_slvl >= 74) // 37 subjob "clicks" to 75
+        {
+            m_slvl++;
+        }
+
+        if (m_slvl > m_mlvl)
+        {
+            m_slvl = m_mlvl;
+        }
+    }
+    else {
+        m_slvl = (slvl > (m_mlvl >> 1) ? (m_mlvl == 1 ? 1 : (m_mlvl >> 1)) : slvl);
+    }
 
     if (this->objtype & TYPE_PC)
         Sql_Query(SqlHandle, "UPDATE char_stats SET slvl = %u WHERE charid = %u LIMIT 1;", m_slvl, this->id);
@@ -1433,6 +1448,7 @@ bool CBattleEntity::ValidTarget(CBattleEntity* PInitiator, uint16 targetFlags)
     {
         if (!isDead())
         {
+
             // Teams PVP
             if (allegiance >= ALLEGIANCE_WYVERNS &&
                 PInitiator->allegiance >= ALLEGIANCE_WYVERNS)
@@ -1445,6 +1461,12 @@ bool CBattleEntity::ValidTarget(CBattleEntity* PInitiator, uint16 targetFlags)
                 (PInitiator->allegiance >= ALLEGIANCE_SAN_DORIA && PInitiator->allegiance <= ALLEGIANCE_WINDURST))
             {
                 return allegiance != PInitiator->allegiance;
+            }
+
+            // FFA
+            if (allegiance == ALLEGIANCE_FFA)
+            {
+                return true;
             }
 
             // PVE
@@ -1510,6 +1532,16 @@ void CBattleEntity::OnCastFinished(CMagicState& state, action_t& action)
     CBattleEntity* POriginalTarget = PActionTarget;
     bool IsMagicCovered= false;
     bool cover = false;
+
+    if (!PActionTarget) {
+        return;
+    }
+
+    if (PActionTarget->objtype == TYPE_PC && (this->allegiance != PActionTarget->allegiance))
+    {
+        PActionTarget->StatusEffectContainer->DelStatusEffect(EFFECT_MAZURKA);
+        PActionTarget->StatusEffectContainer->DelStatusEffect(EFFECT_QUICKENING);
+    }
 
     if (this->objtype == TYPE_MOB && PActionTarget->StatusEffectContainer->HasStatusEffect(EFFECT_COVER) && PActionTarget->StatusEffectContainer->GetStatusEffect(EFFECT_COVER)->GetPower() & 4)
     {
@@ -1625,6 +1657,11 @@ void CBattleEntity::OnCastFinished(CMagicState& state, action_t& action)
         {
             PTarget->StatusEffectContainer->DelStatusEffect(EFFECT_BLINK);
             PTarget->StatusEffectContainer->DelStatusEffect(EFFECT_COPY_IMAGE);
+            if (PTarget->objtype == TYPE_PC && this->allegiance != PTarget->allegiance)
+            {
+                PActionTarget->StatusEffectContainer->DelStatusEffect(EFFECT_MAZURKA);
+                PActionTarget->StatusEffectContainer->DelStatusEffect(EFFECT_QUICKENING);
+            }
         }
 
         // TODO: this is really hacky and should eventually be moved into lua, and spellFlags should probably be in the spells table..
@@ -1870,6 +1907,12 @@ bool CBattleEntity::OnAttack(CAttackState& state, action_t& action)
         return false;
     }
 
+    if (PTarget->objtype == TYPE_PC && this->allegiance != PTarget->allegiance)
+    {
+        PTarget->StatusEffectContainer->DelStatusEffect(EFFECT_MAZURKA);
+        PTarget->StatusEffectContainer->DelStatusEffect(EFFECT_QUICKENING);
+    }
+
     // Create a new attack round.
     CAttackRound attackRound(this, PTarget);
 
@@ -1971,7 +2014,7 @@ bool CBattleEntity::OnAttack(CAttackState& state, action_t& action)
                         damage = (int32)((float)damage * DamageRatio);
                         actionTarget.spikesParam = battleutils::TakePhysicalDamage(PTarget, this, attack.GetAttackType(), damage, false, SLOT_MAIN, 1, nullptr, true, false, true);
                         actionTarget.spikesMessage = 33;
-                        if (PTarget->objtype == TYPE_PC)
+                        if (PTarget->objtype == TYPE_PC && ((CCharEntity*)PTarget)->m_isPvp == false)
                         {
                             auto targ_weapon = dynamic_cast<CItemWeapon*>(PTarget->m_Weapons[SLOT_MAIN]);
                             uint8 skilltype = (targ_weapon == nullptr ? SKILL_HAND_TO_HAND : targ_weapon->getSkillType());
@@ -2053,7 +2096,7 @@ bool CBattleEntity::OnAttack(CAttackState& state, action_t& action)
             {
                 if (actionTarget.reaction == REACTION_GUARD || ((map_config.newstyle_skillups & NEWSTYLE_GUARD) > 0))
                 {
-                    if (battleutils::GetGuardRate(this, PTarget) > 0)
+                    if (battleutils::GetGuardRate(this, PTarget) > 0 && ((CCharEntity*)PTarget)->m_isPvp == false)
                     {
                         charutils::TrySkillUP((CCharEntity*)PTarget, SKILL_GUARD, GetMLevel());
                     }
@@ -2061,7 +2104,7 @@ bool CBattleEntity::OnAttack(CAttackState& state, action_t& action)
 
                 if (actionTarget.reaction == REACTION_BLOCK || ((map_config.newstyle_skillups & NEWSTYLE_BLOCK) > 0))
                 {
-                    if (battleutils::GetBlockRate(this, PTarget) > 0)
+                    if (battleutils::GetBlockRate(this, PTarget) > 0 && ((CCharEntity*)PTarget)->m_isPvp == false)
                     {
                         charutils::TrySkillUP((CCharEntity*)PTarget, SKILL_SHIELD, GetMLevel());
                     }
@@ -2069,12 +2112,12 @@ bool CBattleEntity::OnAttack(CAttackState& state, action_t& action)
 
                 if (actionTarget.reaction == REACTION_PARRY || ((map_config.newstyle_skillups & NEWSTYLE_PARRY) > 0))
                 {
-                    if (battleutils::GetParryRate(this, PTarget) > 0)
+                    if (battleutils::GetParryRate(this, PTarget) > 0 && ((CCharEntity*)PTarget)->m_isPvp == false)
                     {
                         charutils::TrySkillUP((CCharEntity*)PTarget, SKILL_PARRY, GetMLevel());
                     }
                 }
-                if (actionTarget.reaction != REACTION_EVADE && actionTarget.reaction != REACTION_PARRY)
+                if (actionTarget.reaction != REACTION_EVADE && actionTarget.reaction != REACTION_PARRY && ((CCharEntity*)PTarget)->m_isPvp == false)
                 {
                     charutils::TrySkillUP((CCharEntity*)PTarget, SKILL_EVASION, GetMLevel());
                 }

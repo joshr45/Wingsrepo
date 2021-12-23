@@ -43,6 +43,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "utils/guildutils.h"
 #include "utils/instanceutils.h"
 #include "utils/itemutils.h"
+#include "grades.h"
 #include "linkshell.h"
 #include "map.h"
 #include "mob_spell_list.h"
@@ -344,6 +345,10 @@ int32 do_init(int32 argc, char** argv)
     gardenutils::Initialize();
     ShowMessage("\t\t\t - " CL_GREEN "[OK]" CL_RESET "\n");
 
+    ShowStatus("do_init: loading grade overrides");
+    grade::LoadGradeOverrides();
+    ShowMessage("\t\t\t - " CL_GREEN "[OK]" CL_RESET "\n");
+
     // нужно будет написать один метод для инициализации всех данных в battleutils
     // и один метод для освобождения этих данных
 
@@ -391,6 +396,12 @@ int32 do_init(int32 argc, char** argv)
     CTaskMgr::getInstance()->AddTask("garbage_collect", server_clock::now(), nullptr, CTaskMgr::TASK_INTERVAL, map_garbage_collect, 15min);
     CTaskMgr::getInstance()->AddTask("crash_recovery_end", server_clock::now() + 2s, nullptr, CTaskMgr::TASK_ONCE, crash_recovery_end);
     CTaskMgr::getInstance()->AddTask("disableForceCreateSession", server_clock::now() + 4s, nullptr, CTaskMgr::TASK_ONCE, disableForceCreateSession);
+    if (map_config.enable_tonberry_weekend) {
+        CTaskMgr::getInstance()->AddTask("tonberry_weekend", server_clock::now(), nullptr, CTaskMgr::TASK_INTERVAL, zoneutils::TonberryWeekendEventTask, 1min);
+    }
+    if (map_config.log_gil_period > 0) {
+        CTaskMgr::getInstance()->AddTask("log_gil", server_clock::now(), nullptr, CTaskMgr::TASK_INTERVAL, charutils::LogGil, std::chrono::minutes(map_config.log_gil_period));
+    }
 
     //ShowDebug("prunedSessionsList size is %u\n", (uint32)prunedSessionsList.size());
     if (prunedSessionsList.size() >= map_config.zone_crash_recovery_min_players)
@@ -2732,8 +2743,9 @@ int32 map_config_default()
     map_config.exp_retain = 0.0f;
     map_config.exp_loss_level = 4;
     map_config.level_sync_enable = 0;
+    map_config.level_sync_range = 0;
     map_config.disable_gear_scaling = 0;
-    map_config.all_jobs_widescan = 1;
+    map_config.all_jobs_widescan = 0;
     map_config.speed_mod = 0;
     map_config.mount_speed_mod = 0;
     map_config.mob_speed_mod = 0;
@@ -2811,6 +2823,21 @@ int32 map_config_default()
     map_config.daily_tally_limit = 50000;
     map_config.mission_storage_recovery = false;
     map_config.helpdesk_enabled = false;
+    map_config.dual_main_job = false;
+    map_config.all_jobs_dual_wield = false;
+    map_config.disable_chocobo_digging = false;
+    map_config.disable_rare_item_limit = false;
+    map_config.weekendEvent = false;
+    map_config.disable_fishing = false;
+    map_config.disable_gardening = false;
+    map_config.storage_mission_unlock = true;
+    map_config.storage_ignore_features = false;
+    map_config.force_enable_mog_locker = false;
+    map_config.enable_aha = false;
+    map_config.enable_duel_pvp = false;
+    map_config.enable_tonberry_weekend = false;
+    map_config.enable_tonberry_xp_buffs = false;
+    map_config.log_gil_period = 0;
     return 0;
 }
 
@@ -2836,6 +2863,7 @@ int32 map_config_read(const int8* cfgName)
 {
     char line[1024], w1[1024], w2[1024];
     FILE* fp;
+    uint8 unknown_sections = 0;
 
     fp = fopen((const char*)cfgName, "r");
     if (fp == nullptr)
@@ -2862,6 +2890,7 @@ int32 map_config_read(const int8* cfgName)
         while (--ptr >= w2 && *ptr == ' ');
         ptr++;
         *ptr = '\0';
+        unknown_sections = 0;
 
         if (strcmpi(w1, "timestamp_format") == 0)
         {
@@ -3067,6 +3096,10 @@ int32 map_config_read(const int8* cfgName)
         else if (strcmp(w1, "level_sync_enable") == 0)
         {
             map_config.level_sync_enable = atoi(w2);
+        }
+        else if (strcmp(w1, "level_sync_range") == 0)
+        {
+            map_config.level_sync_range = atoi(w2);
         }
         else if (strcmp(w1, "disable_gear_scaling") == 0)
         {
@@ -3327,9 +3360,16 @@ int32 map_config_read(const int8* cfgName)
         {
             map_config.cheat_threshold_jail = atoi(w2);
         }
-        else if (strcmp(w1, "debug_client_ip") == 0)
+        else
         {
-        inet_pton(AF_INET, w2, &map_config.debug_client_ip);
+            unknown_sections++;
+        }
+
+        // Indeed we have to begin a new block because we have too many else-ifs
+        // above and Visual Studio freaks out giving a C1061 error
+        if (strcmp(w1, "debug_client_ip") == 0)
+        {
+            inet_pton(AF_INET, w2, &map_config.debug_client_ip);
         }
         else if (strcmp(w1, "daily_tally_amount") == 0)
         {
@@ -3341,16 +3381,78 @@ int32 map_config_read(const int8* cfgName)
         }
         else if (strcmp(w1, "mission_storage_recovery") == 0)
         {
-        map_config.mission_storage_recovery = atoi(w2);
+            map_config.mission_storage_recovery = atoi(w2);
         }
         else if (strcmp(w1, "helpdesk_enabled") == 0)
         {
-        map_config.helpdesk_enabled = atoi(w2);
+            map_config.helpdesk_enabled = atoi(w2);
+        }
+        else if (strcmp(w1, "dual_main_job") == 0)
+        {
+            map_config.dual_main_job = atoi(w2);
+        }
+        else if (strcmp(w1, "all_jobs_dual_wield") == 0)
+        {
+            map_config.all_jobs_dual_wield = atoi(w2);
+        }
+        else if (strcmp(w1, "disable_chocobo_digging") == 0)
+        {
+            map_config.disable_chocobo_digging = atoi(w2);
+        }
+        else if (strcmp(w1, "disable_rare_item_limit") == 0)
+        {
+            map_config.disable_rare_item_limit = atoi(w2);
+        }
+        else if (strcmp(w1, "disable_fishing") == 0)
+        {
+            map_config.disable_fishing = atoi(w2);
+        }
+        else if (strcmp(w1, "disable_gardening") == 0)
+        {
+            map_config.disable_gardening = atoi(w2);
+        }
+        else if (strcmp(w1, "storage_mission_unlock") == 0)
+        {
+            map_config.storage_mission_unlock = atoi(w2);
+        }
+        else if (strcmp(w1, "storage_ignore_features") == 0)
+        {
+            map_config.storage_ignore_features = atoi(w2);
+        }
+        else if (strcmp(w1, "force_enable_mog_locker") == 0)
+        {
+            map_config.force_enable_mog_locker = atoi(w2);
+        }
+        else if (strcmp(w1, "enable_aha") == 0)
+        {
+            map_config.enable_aha = atoi(w2);
+        }
+        else if (strcmp(w1, "enable_duel_pvp") == 0)
+        {
+            map_config.enable_duel_pvp = atoi(w2);
+        }
+        else if (strcmp(w1, "enable_tonberry_weekend") == 0)
+        {
+            map_config.enable_tonberry_weekend = atoi(w2);
+        }
+        else if (strcmp(w1, "enable_tonberry_xp_buffs") == 0)
+        {
+            map_config.enable_tonberry_xp_buffs = atoi(w2);
+        }
+        else if (strcmp(w1, "log_gil_period") == 0)
+        {
+            map_config.log_gil_period = atoi(w2);
         }
         else
         {
+            unknown_sections++;
+        }
+
+        if (unknown_sections >= 2)
+        {
             ShowWarning(CL_YELLOW"Unknown setting '%s' in file %s\n" CL_RESET, w1, cfgName);
         }
+
     }
 
     fclose(fp);

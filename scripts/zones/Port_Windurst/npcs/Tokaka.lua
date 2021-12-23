@@ -9,8 +9,12 @@ require("scripts/globals/settings")
 
 function onTrade(player, npc, trade)
 
-TokakaSpokenTo = player:getCharVar("TokakaSpokenTo")
-NeedToZone     = player:needToZone()
+    if not player:isFishingEnabled() then
+        return
+    end
+
+    TokakaSpokenTo = player:getCharVar("TokakaSpokenTo")
+    NeedToZone     = player:needToZone()
 
     if (TokakaSpokenTo == 1 and NeedToZone == false) then
         count = trade:getItemCount()
@@ -25,7 +29,11 @@ end
 
 function onTrigger(player, npc)
 
-SomethingFishy = player:getQuestStatus(WINDURST, tpz.quest.id.windurst.SOMETHING_FISHY)
+    if not player:isFishingEnabled() then
+        return
+    end
+
+    SomethingFishy = player:getQuestStatus(WINDURST, tpz.quest.id.windurst.SOMETHING_FISHY)
     if (player:getQuestStatus(WINDURST, tpz.quest.id.windurst.BLAST_FROM_THE_PAST) == QUEST_ACCEPTED and player:getCharVar("BlastFromThePast_Prog") == 0) then
         player:startEvent(318)
         player:setCharVar("BlastFromThePast_Prog", 1)

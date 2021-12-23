@@ -1316,7 +1316,7 @@ namespace charutils
             delete PItem;
             return 0;
         }
-        if (PItem->getFlag() & ITEM_FLAG_RARE)
+        if ((!map_config.disable_rare_item_limit) && (PItem->getFlag() & ITEM_FLAG_RARE))
         {
             if (HasItem(PChar, PItem->getID()))
             {
@@ -1418,8 +1418,8 @@ namespace charutils
         charutils::SaveCharExp(PChar, PChar->GetMJob());
         PChar->updatemask |= UPDATE_HP;
 
-        PChar->pushPacket(new CCharJobsPacket(PChar));
-        PChar->pushPacket(new CCharStatsPacket(PChar));
+        PChar->pushPacket(new CCharJobsPacket(PChar, true));
+        PChar->pushPacket(new CCharStatsPacket(PChar, true));
         PChar->pushPacket(new CCharSkillsPacket(PChar));
         PChar->pushPacket(new CCharRecastPacket(PChar));
         PChar->pushPacket(new CCharAbilitiesPacket(PChar));
@@ -1635,7 +1635,7 @@ namespace charutils
         {
             CItem* PItem = PChar->UContainer->GetItem(slotid);
 
-            if (PItem != nullptr && PItem->getFlag() & ITEM_FLAG_RARE)
+            if ((!map_config.disable_rare_item_limit) && (PItem != nullptr && PItem->getFlag() & ITEM_FLAG_RARE))
             {
                 if (HasItem(PTarget, PItem->getID()))
                 {
@@ -3242,6 +3242,12 @@ namespace charutils
         // This usually happens after a crash
         TPZ_DEBUG_BREAK_IF(SkillID >= MAX_SKILLTYPE);   // выход за пределы допустимых умений
 
+        if (PChar->objtype != TYPE_PC)
+        {
+            //ShowDebug(CL_CYAN"INVALID CLIENT %s CANNOT SKILLUP ID %i: NOT A PLAYER CHARACTER\n" CL_RESET, PChar->GetName(), SkillID);
+            return;
+        }
+
         if ((PChar->WorkingSkills.rank[SkillID] != 0) && !(PChar->WorkingSkills.skill[SkillID] & 0x8000))
         {
             uint16 CurSkill = PChar->RealSkills.skill[SkillID];
@@ -3499,7 +3505,7 @@ namespace charutils
     void setTitle(CCharEntity* PChar, uint16 Title)
     {
         PChar->profile.title = Title;
-        PChar->pushPacket(new CCharStatsPacket(PChar));
+        PChar->pushPacket(new CCharStatsPacket(PChar, true));
 
         addTitle(PChar, Title);
         SaveTitles(PChar);
@@ -4129,7 +4135,7 @@ namespace charutils
                 BuildingCharTraitsTable(PChar);
                 BuildingCharWeaponSkills(PChar);
 
-                PChar->pushPacket(new CCharJobsPacket(PChar));
+                PChar->pushPacket(new CCharJobsPacket(PChar, true));
                 PChar->pushPacket(new CCharUpdatePacket(PChar));
                 PChar->pushPacket(new CCharSkillsPacket(PChar));
                 PChar->pushPacket(new CCharRecastPacket(PChar));
@@ -4168,18 +4174,7 @@ namespace charutils
         }
 
         SaveCharExp(PChar, PChar->GetMJob());
-        PChar->pushPacket(new CCharStatsPacket(PChar));
-    }
-
-    void tryCompleteGK75(CCharEntity* PChar)
-    {
-        if (PChar->jobs.genkai != 75 && (PChar->jobs.job[JOB_PUP] >= 70 || PChar->jobs.job[JOB_BLU] >= 70 || PChar->jobs.job[JOB_COR] >= 70 || PChar->jobs.job[JOB_DNC] >= 70 || PChar->jobs.job[JOB_SCH] >= 70))
-        {
-            PChar->jobs.genkai = 75;
-
-            Sql_Query(SqlHandle, "UPDATE char_jobs SET genkai = %u WHERE charid = %u LIMIT 1", PChar->jobs.genkai, PChar->id);
-        }
-        return;
+        PChar->pushPacket(new CCharStatsPacket(PChar, true));
     }
 
     /************************************************************************
@@ -4196,9 +4191,15 @@ namespace charutils
         if (PChar->isDead())
             return;
 
+        if (PChar->m_isPvp)
+            return;
+
         if (!expFromRaise)
         {
             exp = (uint32)(exp * map_config.exp_rate);
+            if (map_config.enable_tonberry_xp_buffs) {
+                exp = (uint32)(exp * (((float)(PChar->getMod(Mod::EXPERIENCE_BONUS_PERC)) + (float)100) / (float)100) );
+            }
         }
         uint16 currentExp = PChar->jobs.exp[PChar->GetMJob()];
         bool onLimitMode = false;
@@ -4358,8 +4359,6 @@ namespace charutils
                     PChar->PParty->ReloadParty();
                 }
 
-                tryCompleteGK75(PChar);
-
                 PChar->UpdateHealth();
 
                 PChar->health.hp = PChar->GetMaxHP();
@@ -4369,7 +4368,7 @@ namespace charutils
                 SaveCharJob(PChar, PChar->GetMJob());
                 SaveCharExp(PChar, PChar->GetMJob());
 
-                PChar->pushPacket(new CCharJobsPacket(PChar));
+                PChar->pushPacket(new CCharJobsPacket(PChar, true));
                 PChar->pushPacket(new CCharUpdatePacket(PChar));
                 PChar->pushPacket(new CCharSkillsPacket(PChar));
                 PChar->pushPacket(new CCharRecastPacket(PChar));
@@ -4380,7 +4379,7 @@ namespace charutils
                 PChar->pushPacket(new CCharSyncPacket(PChar));
 
                 PChar->loc.zone->PushPacket(PChar, CHAR_INRANGE_SELF, new CMessageCombatPacket(PChar, PMob, PChar->jobs.job[PChar->GetMJob()], 0, 9));
-                PChar->pushPacket(new CCharStatsPacket(PChar));
+                PChar->pushPacket(new CCharStatsPacket(PChar, true));
 
                 luautils::OnPlayerLevelUp(PChar);
                 PChar->updatemask |= UPDATE_HP;
@@ -4391,7 +4390,7 @@ namespace charutils
         SaveCharStats(PChar);
         SaveCharJob(PChar, PChar->GetMJob());
         SaveCharExp(PChar, PChar->GetMJob());
-        PChar->pushPacket(new CCharStatsPacket(PChar));
+        PChar->pushPacket(new CCharStatsPacket(PChar, true));
 
         if (onLimitMode)
             PChar->pushPacket(new CMenuMeritPacket(PChar));
@@ -4553,6 +4552,10 @@ namespace charutils
 
     void UpdateMissionStorage(CCharEntity* PChar, bool recovery)
     {
+        if (!map_config.storage_mission_unlock) {
+            return;
+        }
+
         uint8 currentMW1 = 0;
         uint8 currentMW2 = 0;
         uint8 currentMW3 = 0;
@@ -5473,10 +5476,31 @@ namespace charutils
             exp = exp + bonus;
         }
 
+        if (map_config.enable_tonberry_xp_buffs) {
+            bool hc = charutils::GetCharVar(PChar, "HardcoreMode") ? true : false;
+
+            if (!hc && PChar->jobs.job[PChar->GetMJob()] < 30)
+            {
+                exp = exp * 2;
+            }
+            else if (!hc && PChar->jobs.job[PChar->GetMJob()] < 40)
+            {
+                exp = exp * 1.5f;
+            }
+
+            if (!hc && map_config.weekendEvent)
+            {
+                exp = exp * 1.15f;
+            }
+        }
+
         return exp;
     }
 
     bool hasMogLockerAccess(CCharEntity* PChar) {
+        if (map_config.force_enable_mog_locker) {
+            return true;
+        }
         char fmtQuery[] = "SELECT value FROM char_vars WHERE charid = %u AND varname = '%s' ";
         Sql_Query(SqlHandle, fmtQuery, PChar->id, "mog-locker-expiry-timestamp");
 
@@ -6053,7 +6077,7 @@ namespace charutils
             {
                 // weapon is now broken
                 PChar->PLatentEffectContainer->CheckLatentsWeaponBreak(slotid);
-                PChar->pushPacket(new CCharStatsPacket(PChar));
+                PChar->pushPacket(new CCharStatsPacket(PChar, false));
             }
             char extra[sizeof(PWeapon->m_extra) * 2 + 1];
             Sql_EscapeStringLen(SqlHandle, extra, (const char*)PWeapon->m_extra, sizeof(PWeapon->m_extra));
@@ -6660,6 +6684,59 @@ void SendYellDeclineMessage(CCharEntity* PChar, EYellCheckResult Reason)
         reason = "The use of the command failed for an unknown reason. If the issue persists please open a GM ticket.";
     }
     PChar->pushPacket(new CChatMessagePacket(PChar, MESSAGE_SYSTEM_3, reason));
+}
+
+int32 LogGil(time_point tick, CTaskMgr::CTask* PTask)
+{
+    int32 ret = Sql_Query(SqlHandle, "SELECT accounts_sessions.accid,chars.charid,charname,quantity,lastgil FROM accounts_sessions INNER JOIN chars ON accounts_sessions.charid = chars.charid INNER JOIN char_inventory ON char_inventory.charid = chars.charid INNER JOIN char_lastgil ON char_lastgil.charid = chars.charid WHERE char_inventory.itemId = 65535 ORDER BY quantity DESC LIMIT 10000;");
+
+    if (ret == SQL_ERROR)
+    {
+        ShowWarning(CL_WHITE"logGil (lua_baseentity) SQL ERROR...\n");
+        return 0;
+    }
+
+    std::string line;
+    uint32 charid = 0;
+    int64 currgil = 0;
+    int64 pregil = 0;
+    int64 diff = 0;
+
+    Sql_t* sqlH4 = Sql_Malloc();
+    Sql_Connect(sqlH4, map_config.mysql_login.c_str(),
+        map_config.mysql_password.c_str(),
+        map_config.mysql_host.c_str(),
+        map_config.mysql_port,
+        map_config.mysql_database.c_str());
+
+    while (Sql_NextRow(SqlHandle) == SQL_SUCCESS)
+    {
+        charid = Sql_GetUIntData(SqlHandle, 1);
+
+        if (zoneutils::GetChar(charid) == nullptr) {
+            // Only process players on this cluster.
+            continue;
+        }
+
+        currgil = Sql_GetIntData(SqlHandle, 3);
+        pregil = Sql_GetIntData(SqlHandle, 4);
+        diff = currgil - pregil;
+
+        if (pregil = 123456789) { pregil = currgil; }
+
+        line = "GIL AUDIT: Player ";
+        line += (const char*)Sql_GetData(SqlHandle, 2);
+        line += " ["; line += std::to_string(charid); line += "] holds ";
+        line += std::to_string(currgil); line += " gil (a "; line += std::to_string(diff); line += " difference since last audit)\n";
+
+        int32 ret2 = Sql_Query(sqlH4, "UPDATE char_lastgil SET lastgil = (SELECT quantity FROM char_inventory WHERE charid = %u LIMIT 1) WHERE charid = %u;", charid, charid);
+
+        if (ret2 != SQL_SUCCESS) { ShowWarning(CL_WHITE"logGil (lua_baseentity) SQL ERROR under H4...\n"); continue; }
+
+        ShowNotice(line);
+    }
+
+    return 0;
 }
 
 }; // namespace charutils

@@ -183,6 +183,7 @@ bool CPathFind::WarpTo(const position_t& point, float maxDistance)
 
 bool CPathFind::isNavMeshEnabled()
 {
+    if (m_PTarget->objtype == TYPE_MOB && ((CMobEntity*)m_PTarget)->m_Behaviour & BEHAVIOUR_NO_ACTION) { return false; }
     return m_PTarget->loc.zone && m_PTarget->loc.zone->m_navMesh != nullptr;
 }
 

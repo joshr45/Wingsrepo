@@ -13,6 +13,9 @@ function onTrade(player, npc, trade)
 end
 
 function onTrigger(player, npc)
+    if not player:isFishingEnabled() then
+        return
+    end
     local guildMember = isGuildMember(player, 5)
     local SkillCap = getCraftSkillCap(player, tpz.skill.FISHING)
     local SkillLevel = player:getSkillLevel(tpz.skill.FISHING)

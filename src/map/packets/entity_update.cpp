@@ -31,6 +31,7 @@
 #include "../entities/trustentity.h"
 #include "../entities/npcentity.h"
 #include "../entities/petentity.h"
+#include "../entities/charentity.h"
 #include "../status_effect_container.h"
 
 CEntityUpdatePacket::CEntityUpdatePacket(CBaseEntity* PEntity, ENTITYUPDATE type, uint8 updatemask)
